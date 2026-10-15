@@ -24,7 +24,7 @@ async function delRec(pid){delete mem[pid];delete modeOf[pid];try{await A.idb('d
 function hosts(){return document.querySelectorAll('.layHost');}
 function cardHTML(where){return `<div class="card layCard"><div class="layTop"><div><h2>📎 Your layout drawing</h2><p class="sub">Photo, scan or PDF of your plan. Saved with this project${where==='est'?' – I can read room sizes from it':''}.</p></div>
  <div class="layBtns"><label class="file accent bigBtn">📎 Upload layout<input type="file" class="layIn" accept="image/*,application/pdf,.pdf"></label><label class="file camBtn">📷 Camera<input type="file" class="layIn" accept="image/*" capture="environment"></label></div></div>
- <div class="layView"></div><div class="layProg" hidden><div class="pbar"><i></i></div><p class="sub pmsg"></p></div></div>`;}
+ <div class="layView"></div><div class="layProg" hidden><div class="pbar"><i></i></div><p class="sub pmsg"></p><button class="mini layStop">✋ Stop and use what I have</button></div></div>`;}
 function viewHTML(f){if(!f)return '<p class="sub">No layout uploaded yet.</p>';const md=modeOf[P().id];
  const note=md==='mem'||md==='ls'?`<div class="warn friendly privNote">🕶️ Private browsing: the layout is kept until you close this tab. Open in a normal tab to save it.${md==='ls'&&f.copy?' (Showing a smaller saved copy.)':''}</div>`:'';
  const r=f.read,sum=r?`<p class="sub">🔍 Last read: ${r.rooms.length} rooms, ${r.units.length} unit types${r.plot?', plot found':''}.</p>`:'';
@@ -49,7 +49,7 @@ document.addEventListener('change',async e=>{const t=e.target;if(!t.classList||!
  A.save();const rec={name:f.name||'layout',blob,type:isPdf?'application/pdf':blob.type,at:Date.now()};cur=rec;mem[P().id]=rec;modeOf[P().id]='pending';
  await refresh(true);try{await saveRec(P().id,rec);}catch(_){}await refresh(true);
  await refresh(true);autoRead();});
-document.addEventListener('click',async e=>{const b=e.target.closest('.layRead,.layDel,.layReview,#lrevX');if(!b)return;
+document.addEventListener('click',async e=>{const b=e.target.closest('.layRead,.layDel,.layReview,.layStop,#lrevX');if(!b)return;if(b.classList.contains('layStop')){cancelReq=true;b.textContent='Stopping…';return;}
  if(b.classList.contains('layDel')){if(!confirm('Remove the uploaded layout from this project?'))return;await delRec(P().id);cur=null;refresh(true);}
  else if(b.classList.contains('layRead'))autoRead();else if(b.classList.contains('layReview')){if(cur&&cur.read)review(cur.read);}else if(b.id==='lrevX')closeRev();});
 function toast(m){const n=document.createElement('div');n.className='toast';n.textContent=m;document.body.appendChild(n);setTimeout(()=>n.remove(),4500);}
@@ -64,6 +64,9 @@ function unline(cv){const w=cv.width,h=cv.height,cx=cv.getContext('2d'),d=cx.get
  for(let y=0;y<h;y++){let s=-1;for(let x=0;x<=w;x++){const dk=x<w&&a[(y*w+x)*4]<128;if(dk&&s<0)s=x;if(!dk&&s>=0){if(x-s>=L)for(let k=s;k<x;k++)m[y*w+k]=1;s=-1;}}}
  for(let x=0;x<w;x++){let s=-1;for(let y=0;y<=h;y++){const dk=y<h&&a[(y*w+x)*4]<128;if(dk&&s<0)s=y;if(!dk&&s>=0){if(y-s>=L)for(let k=s;k<y;k++)m[k*w+x]=1;s=-1;}}}
  for(let i=0;i<w*h;i++)if(m[i]){a[i*4]=a[i*4+1]=a[i*4+2]=255;}cx.putImageData(d,0,0);return cv;}
+// rendered brochures (furniture, carpets, coloured fills): keep only near-black, unsaturated ink = the text
+function darkMask(cv,T){const cx=cv.getContext('2d',{willReadFrequently:true}),d=cx.getImageData(0,0,cv.width,cv.height),a=d.data,sc=255/(T-40);for(let i=0;i<a.length;i+=4){const r=a[i],g=a[i+1],b=a[i+2],mx=r>g?(r>b?r:b):(g>b?g:b),mn=r<g?(r<b?r:b):(g<b?g:b);let v=255;if(mx<T&&mx-mn<60){v=(.299*r+.587*g+.114*b-40)*sc;v=v<0?0:v>255?255:v;}a[i]=a[i+1]=a[i+2]=v;}cx.putImageData(d,0,0);return cv;}
+function colourful(cv){const d=cv.getContext('2d',{willReadFrequently:true}).getImageData(0,0,cv.width,cv.height).data;let n=0,c=0;for(let i=0;i<d.length;i+=16){const r=d[i],g=d[i+1],b=d[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b);n++;if(mx-mn>40||(mx>110&&mx<215))c++;}return c/n;}
 function gray(cv){const cx=cv.getContext('2d'),d=cx.getImageData(0,0,cv.width,cv.height),a=d.data;for(let i=0;i<a.length;i+=4){let g=.299*a[i]+.587*a[i+1]+.114*a[i+2];g=g>200?255:g<60?0:(g-60)*255/140;a[i]=a[i+1]=a[i+2]=g;}cx.putImageData(d,0,0);return cv;}
 // ---------- libraries (self-hosted in /vendor, cached by the service worker after first use) ----------
 let pdfjs=null,worker=null,wTimer=null,progCb=null;
@@ -77,22 +80,76 @@ async function ocrWorker(){clearTimeout(wTimer);if(worker)return worker;await sc
  worker=await Tesseract.createWorker('eng',1,{workerPath:VEND+'tesseract/worker.min.js',corePath:simd?VEND+'tesseract/':'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/',langPath:VEND+'lang',gzip:true,workerBlobURL:false,logger:m=>progCb&&progCb(m)});
  await worker.setParameters({tessedit_pageseg_mode:'11',preserve_interword_spaces:'1'});return worker;}
 function idleKill(){clearTimeout(wTimer);wTimer=setTimeout(()=>{if(worker){worker.terminate();worker=null;}},90000);}
-async function ocr(cv,page){const w=await ocrWorker();const {data}=await w.recognize(cv);const out=[];
- (data.lines||[]).forEach(l=>{const t=(l.text||'').trim();if(!t)return;const b=l.bbox;out.push({text:t,x:b.x0,y:b.y0,w:b.x1-b.x0,h:b.y1-b.y0,page,conf:l.confidence});});return out;}
-// pdf.js text items -> lines (join items on the same baseline that sit close together)
-function pdfLines(items,vh,page){const it=items.filter(i=>i.str&&i.str.trim()).map(i=>{const h=Math.hypot(i.transform[2],i.transform[3])||10;return {text:i.str,x:i.transform[4],y:vh-i.transform[5]-h,w:i.width||i.str.length*h*.5,h,page,conf:96};}).sort((a,b)=>a.y-b.y||a.x-b.x);
- const lines=[];it.forEach(i=>{const l=lines.find(l=>Math.abs(l.y-i.y)<l.h*.5&&i.x-(l.x+l.w)<l.h*1.2&&i.x-(l.x+l.w)>-l.h);if(l){l.text+=(i.x-(l.x+l.w)>l.h*.15?' ':'')+i.str;l.w=i.x+i.w-l.x;}else lines.push(Object.assign({},i));});return lines;}
+function withTimeout(p,ms){let t;return Promise.race([p,new Promise((_,rej)=>{t=setTimeout(()=>rej(new Error('timeout')),ms);})]).finally(()=>clearTimeout(t));}
+function free(cv){if(cv){cv.width=cv.height=0;}}
+// OCR one canvas; m maps canvas px back to the source: native = s + px/k. A stuck page is abandoned after 90 s (the worker is restarted).
+async function ocr(cv,page,m){m=m||{sx:0,sy:0,k:1};if(window.LAY_DEBUG&&page===LAY_DEBUG.page)LAY_DEBUG.c.push(cv.toDataURL('image/png'));const w=await ocrWorker();let data;
+ try{({data}=await withTimeout(w.recognize(cv),90000));}catch(e){try{worker&&worker.terminate();}catch(_){}worker=null;return [];}
+ const out=[];(data.lines||[]).forEach(l=>{const t=(l.text||'').trim();if(!t||(l.confidence<25&&!/\d.*[x×X*].*\d|\d['’]/.test(t)))return;const b=l.bbox;out.push({text:t,x:m.sx+b.x0/m.k,y:m.sy+b.y0/m.k,w:(b.x1-b.x0)/m.k,h:(b.y1-b.y0)/m.k,page,conf:l.confidence,frame:m.frame||0});});return out;}
+// pdf.js text items -> lines. Items are grouped per text direction (CAD exports often have vertical text and one item per word or letter).
+function pdfLines(items,vh,page){const it=items.filter(i=>i.str&&i.str.trim()).map(i=>{const [a,b,c,d,e,f]=i.transform,len=Math.hypot(a,b)||1,dx=a/len,dy=b/len,h=Math.hypot(c,d)||len||10,fr=Math.round(Math.atan2(dy,dx)/(Math.PI/2))&3;
+  const u=e*dx+f*dy,v=-e*dy+f*dx;return {text:i.str,x:u,y:(fr?-v:vh-f)-h,w:i.width||i.str.length*h*.5,h,page,conf:96,frame:fr};}).sort((a,b)=>a.frame-b.frame||a.y-b.y||a.x-b.x);
+ const lines=[];it.forEach(i=>{const l=lines.find(l=>l.frame===i.frame&&Math.abs(l.y-i.y)<l.h*.5&&i.x-(l.x+l.w)<l.h*1.2&&i.x-(l.x+l.w)>-l.h);if(l){l.text+=(i.x-(l.x+l.w)>l.h*.15?' ':'')+i.str;l.w=Math.max(l.w,i.x+i.w-l.x);}else lines.push(Object.assign({},i));});return lines;}
+// what a drawing page looks like in text
+const PLANRE=/(floor\s*plan|\bplan\b|bed\s*r|\bbed\b|lounge|kitchen|toilet|bath|\bshop|drawing|dining|porch|sq\.?\s*ft|\bsft\b|\d\s*'\s*-?\s*\d*\s*"?\s*x\s*\d|\b\d{1,2}\s*x\s*\d{1,2}\b)/i;
+const KEEPRE=/(\d\s*'|\d\s*x\s*\d|bed|room|lounge|kitchen|bath|toilet|shop|drawing|dining|store|porch|lift|stair|lobby|sq|sft|plan)/i;
+// sources: a PDF page (points) or a decoded image (pixels); draw(region, scale) -> canvas
+function pdfSrc(pg){const v=pg.getViewport({scale:1});return {W:v.width,H:v.height,pts:true,async draw(sx,sy,sw,sh,k){const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));const cx=cv.getContext('2d',{willReadFrequently:true});cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
+ await pg.render({canvasContext:cx,viewport:pg.getViewport({scale:k,offsetX:-sx*k,offsetY:-sy*k})}).promise;return cv;}};}
+async function imgSrc(blob){let src;try{src=await createImageBitmap(blob,{imageOrientation:'from-image'});}catch(_){src=await loadImg(blob);}
+ return {W:src.width,H:src.height,pts:false,async draw(sx,sy,sw,sh,k){const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));const cx=cv.getContext('2d',{willReadFrequently:true});cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(src,sx,sy,sw,sh,0,0,cv.width,cv.height);return cv;},close(){if(src.close)src.close();}};}
+function rot(cv,deg){const r=document.createElement('canvas');r.width=cv.height;r.height=cv.width;const cx=r.getContext('2d',{willReadFrequently:true});cx.translate(r.width/2,r.height/2);cx.rotate(deg*Math.PI/180);cx.drawImage(cv,-cv.width/2,-cv.height/2);return r;}
+const TILE=2400,OVER=360;
+// read one page/image: quick look -> if it is a drawing, a sharper tiled pass (tiny CAD text) -> sideways passes when labels are missing their sizes
+async function readSource(src,page,always,step){const L=Math.max(src.W,src.H);
+ let k=Math.min(src.pts?4:1.5,1400/L),cv=await src.draw(0,0,src.W,src.H,k);const rich=colourful(cv)>.12,prep=c=>unline(rich?darkMask(c,150):gray(c));
+ prep(cv);let lines=await ocr(cv,page,{sx:0,sy:0,k});free(cv);
+ if(cancelReq||(!always&&!PLANRE.test(lines.map(l=>l.text).join(' '))))return {lines,plan:false};
+ // sharper pass: ~4400 px across an A4/A3 sheet (≈2.5× a 150 dpi scan) so 6-9 px labels become readable; cut into tiles to keep phone memory low
+ const T=src.pts?Math.min(5200,Math.max(3000,L*5.2)):Math.min(5200,Math.max(2600,L*(rich?2.5:1))),k2=T/L,cw=src.W*k2,ch=src.H*k2,nx=Math.ceil((cw-OVER)/(TILE-OVER)),ny=Math.ceil((ch-OVER)/(TILE-OVER));
+ const tiles=[];for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const x0=Math.min(i*(TILE-OVER),Math.max(0,cw-TILE)),y0=Math.min(j*(TILE-OVER),Math.max(0,ch-TILE));tiles.push([x0/k2,y0/k2,Math.min(TILE,cw)/k2,Math.min(TILE,ch)/k2]);}
+ let hi=[];for(let t=0;t<tiles.length&&!cancelReq;t++){step&&step(`sharp pass ${t+1}/${tiles.length}`,(t+1)/(tiles.length+2));const [sx,sy,sw,sh]=tiles[t];const c=prep(await src.draw(sx,sy,sw,sh,k2));hi=hi.concat(await ocr(c,page,{sx,sy,k:k2}));free(c);await new Promise(r=>setTimeout(r,0));}
+ // drop duplicates read twice in the tile overlaps
+ const seen=[];hi=hi.filter(l=>{const d=seen.find(o=>o.text===l.text&&Math.abs(o.x-l.x)<l.h*2&&Math.abs(o.y-l.y)<l.h);if(d)return false;seen.push(l);return true;});
+ // keep big headings, unit/plot/area labels from the quick look (tiles can cut long titles)
+ const dg=t=>(t.match(/\d+/g)||[]).join(',');
+ if(hi.length>=lines.length*.6){const keep=lines.filter(l=>LP.floorOf(l.text)||LP.unitIn(l.text)||LP.plotIn(l.text)||/area|plan/i.test(l.text));lines=hi.concat(keep.filter(k=>!hi.some(h=>Math.abs(h.y-k.y)<Math.max(h.h,k.h)&&h.x<k.x+k.w&&k.x<h.x+h.w&&(h.text===k.text||(dg(h.text)&&dg(h.text)===dg(k.text))))));}
+ // close-up re-read under each room name that has no size yet (sizes are usually printed right below the name)
+ if(!cancelReq){const pr=LP.parse(lines),bare=pr.rooms.filter(r=>!r.sqft&&r.box).slice(0,40);
+  if(bare.length){const w=await ocrWorker();await w.setParameters({tessedit_pageseg_mode:'6'});
+   const grab=async(b,sx,sy,sw,sh,psm)=>{sx=Math.max(0,sx);sy=Math.max(0,sy);sw=Math.min(src.W-sx,sw);sh=Math.min(src.H-sy,sh);const h=Math.max(b.h,2),k4=Math.min(k2,Math.max(k2*.4,24/h));await w.setParameters({tessedit_pageseg_mode:psm});
+    const c=prep(await src.draw(sx,sy,sw,sh,k4));const rl=await ocr(c,page,{sx,sy,k:k4});free(c);return rl.filter(l=>LP.dims(l.text).length&&!LP.roomsIn(l.text).length);};
+   for(let i=0;i<bare.length&&!cancelReq;i++){step&&step(`close-up ${i+1}/${bare.length}`,.9);const b=bare[i].box,h=Math.max(b.h,2),cx=b.x+b.w/2,hw=Math.max(b.w*.85,h*4.5);
+    let rl=await grab(b,cx-hw,b.y+b.h*.9,hw*2,h*1.7,'7');
+    if(!rl.length)rl=await grab(b,cx-hw*1.3,b.y-h*.3,hw*2.6,h*4.2,'6');
+    rl.slice(0,1).forEach(l=>{l.y=Math.max(l.y,b.y+b.h*1.05);l.x=Math.min(l.x,cx-l.w/2);l.conf=Math.min(l.conf,85);lines.push(l);});}
+   await w.setParameters({tessedit_pageseg_mode:'11'});}}
+
+ const probe=LP.parse(lines),bare=probe.rooms.filter(r=>!r.sqft).length;
+ if(bare>=2&&!cancelReq){const k3=Math.min(src.pts?4:1,2400/L),base=prep(await src.draw(0,0,src.W,src.H,k3));
+  for(const [deg,fr] of [[90,1],[270,3]]){if(cancelReq)break;step&&step('sideways text',.95);const r=rot(base,deg);const rl=(await ocr(r,page,{sx:0,sy:0,k:k3,frame:fr})).filter(l=>KEEPRE.test(l.text));free(r);lines=lines.concat(rl);}
+  free(base);}
+ return {lines,plan:true};}
 // ---------- progress ----------
 function prog(pct,msg){document.querySelectorAll('.layProg').forEach(p=>{p.hidden=pct==null;p.querySelector('i').style.width=Math.round(pct||0)+'%';p.querySelector('.pmsg').textContent=msg||'';});document.querySelectorAll('.layRead').forEach(b=>b.disabled=pct!=null);}
 let busy=false;
-async function autoRead(){if(busy||!cur)return;busy=true;const f=cur,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
+let cancelReq=false;
+async function autoRead(){if(busy||!cur)return;busy=true;cancelReq=false;const f=cur,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
  try{prog(3,'Getting ready…');let base=5,span=85;
-  progCb=m=>{if(m.status==='recognizing text')prog(base+span*m.progress,`Reading text… ${Math.round(m.progress*100)}%`);else if(/load|initializ/.test(m.status))prog(Math.min(base,4+(m.progress||0)*4),'Loading the text reader (first time only)…');};
-  if(isPdf){prog(5,'Opening PDF…');const pdf=await loadPdf(f.blob),N=Math.min(pdf.numPages,6);
-   for(let i=1;i<=N;i++){base=5+85*(i-1)/N;span=85/N;prog(base,`Page ${i} of ${N}…`);const pg=await pdf.getPage(i),v=pg.getViewport({scale:1}),tc=await pg.getTextContent(),pl=pdfLines(tc.items,v.height,i-1);
-    if(pl.map(l=>l.text).join('').replace(/\s/g,'').length>=15)lines=lines.concat(pl);else{const cv=unline(gray(await pdfCanvas(pg,2200)));const ol=await ocr(cv,i-1);const k=v.width/cv.width;ol.forEach(l=>{l.x*=k;l.y*=k;l.w*=k;l.h*=k;});lines=lines.concat(ol);}}}
-  else{prog(5,'Preparing image…');const cv=unline(gray(await toCanvas(f.blob,2200,1400)));lines=await ocr(cv,0);}
-  prog(95,'Finding rooms & sizes…');const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();
+  document.querySelectorAll('.layStop').forEach(b=>b.textContent='✋ Stop and use what I have');
+  progCb=m=>{if(m.status==='recognizing text')return;else if(/load|initializ/.test(m.status))prog(Math.min(base,4+(m.progress||0)*4),'Loading the text reader (first time only)…');};
+  const t0=Date.now();
+  if(isPdf){prog(5,'Opening PDF…');const pdf=await loadPdf(f.blob),N=Math.min(pdf.numPages,40);let plans=0;
+   for(let i=1;i<=N&&!cancelReq;i++){base=5+88*(i-1)/N;span=88/N;const lab=`Page ${i} of ${N}`;prog(base,lab+'…');const pg=await pdf.getPage(i),v=pg.getViewport({scale:1}),tc=await pg.getTextContent(),pl=pdfLines(tc.items,v.height,i-1),txt=pl.map(l=>l.text).join(' ');
+    let useOcr=txt.replace(/\s/g,'').length<15;if(!useOcr&&!PLANRE.test(txt)){try{const ops=await pg.getOperatorList(),O=pdfjs.OPS;useOcr=ops.fnArray.some(x=>x===O.paintImageXObject||x===O.paintJpegXObject||x===O.paintInlineImageXObject);}catch(_){}}
+    lines=lines.concat(pl);
+    if(useOcr){const r=await readSource(pdfSrc(pg),i-1,false,(m,fr)=>prog(base+span*fr,`${lab}: ${m}…`));lines=lines.concat(r.lines);if(r.plan)plans++;}
+    else if(PLANRE.test(txt))plans++;
+    pg.cleanup&&pg.cleanup();}
+   lines.plans=plans;}
+  else{prog(5,'Preparing image…');const src=await imgSrc(f.blob);base=5;span=88;const r=await readSource(src,0,true,(m,fr)=>prog(base+span*fr,`Reading: ${m}…`));src.close&&src.close();lines=r.lines;}
+  const secs=Math.round((Date.now()-t0)/1000);
+  prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();r.secs=secs;r.stopped=cancelReq;
   f.read=r;try{await saveRec(P().id,f);}catch(_){}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
  catch(e){prog(null);alert('Sorry, I could not read this file: '+(e&&e.message||e)+'\nYou can still enter sizes by hand.');}
  finally{busy=false;progCb=null;idleKill();warm();}}
