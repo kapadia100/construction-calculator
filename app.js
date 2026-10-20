@@ -16,11 +16,12 @@ const MQ=matchMedia('(max-width:760px)');const fitBar=()=>{const tb=$('#totBar')
 // ---------- tabs ----------
 document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,.tab').forEach(x=>x.classList.remove('on'));b.classList.add('on');$('#'+b.dataset.tab).classList.add('on');renderAll();});
 // ---------- projects ----------
-function renderProjSel(){$('#projSel').innerHTML=st.projects.map(p=>`<option value="${p.id}" ${p.id===P().id?'selected':''}>${esc(p.name)}</option>`).join('');}
+function renderProjSel(){$('#projSel').innerHTML=st.projects.map(p=>`<option value="${p.id}" ${p.id===P().id?'selected':''}>${esc(T(p))}</option>`).join('');}
+function T(p){const n=String(p.plotNo||'').trim();if(!n)return p.name;const lab=/^plot\b/i.test(n)?n:'Plot '+n;return p.name&&p.name.toLowerCase().includes(n.toLowerCase())?p.name:lab+' – '+p.name;}window.__title=()=>T(P());
 $('#projSel').onchange=e=>{st.cur=e.target.value;save();loadInputs();renderAll();};
 $('#newP').onclick=()=>{const p=newProject('Project '+(st.projects.length+1));st.projects.push(p);st.cur=p.id;save();loadInputs();renderAll();};
 $('#dupP').onclick=()=>{const p=C.clone(P());p.id='p'+Date.now();p.name+=' (copy)';st.projects.push(p);st.cur=p.id;save();loadInputs();renderAll();};
-$('#delP').onclick=()=>{if(!confirm('Delete "'+P().name+'"?'))return;st.projects=st.projects.filter(p=>p.id!==P().id);if(!st.projects.length)st.projects.push(newProject());st.cur=st.projects[0].id;save();loadInputs();renderAll();};
+$('#delP').onclick=()=>{if(!confirm('Delete "'+T(P())+'"?'))return;st.projects=st.projects.filter(p=>p.id!==P().id);if(!st.projects.length)st.projects.push(newProject());st.cur=st.projects[0].id;save();loadInputs();renderAll();};
 // ---------- estimate inputs ----------
 const F=['plotArea','plotUnit','plotPrice','plotPriceMode','floors','bua','quality','scope','extra'];
 function loadInputs(){const p=P();applyMode&&setTimeout(applyMode);$('#pName').value=p.name;F.forEach(f=>$('#'+f).value=p[f]);$('#override').checked=!!p.override;$('#site').checked=p.site!==false;renderFloorOv();}
@@ -39,11 +40,11 @@ function convertPriceMode(o,old,sel){if(old===o.plotPriceMode||!(+o.plotArea>0))
 function convertUnit(o,old,aSel,pSel,f){if(old===o.plotUnit)return;const r=f(old)/f(o.plotUnit);o.plotArea=+(o.plotArea*r).toFixed(2);if(o.plotPriceMode==='perunit')o.plotPrice=Math.round(o.plotPrice/r);const a1=$(aSel),p1=$(pSel);if(a1)a1.value=o.plotArea;if(p1)p1.value=o.plotPrice;}
 function moneyHints(){document.querySelectorAll('input.money').forEach(i=>{let h=i.parentElement.querySelector('.mhint');if(!h){h=document.createElement('small');h.className='mhint';i.insertAdjacentElement('afterend',h);}const v=num(i.value);h.textContent=i.value.trim()===''?'':(v?'= '+fmt(v)+(v>=1e5?' ('+C.words(v)+')':''):'⚠️ not a number – try 15000000, 1,50,00,000 or 1.5 crore');h.classList.toggle('bad',i.value.trim()!==''&&!v&&!/^0+$/.test(i.value.trim()));});}
 document.addEventListener('input',e=>{if(e.target.classList&&e.target.classList.contains('money'))moneyHints();});
-const COLORS=['#ffadad','#a0c4ff','#caffbf','#ffd6a5','#bdb2ff','#9bf6ff','#fdffb6'];
+const COLORS=['#1e3a5f','#f59e0b','#64748b','#0ea5e9','#94a3b8','#b45309','#16a34a'];
 function renderEstimate(){if(P().mode==='highrise'){renderHROut();return;}const p=P(),s=S(),e=C.estimate(p,s);
  $('#grand').textContent=fmt(e.grand);$('#perSqft').textContent=C.words(e.grand)+' · building '+fmt(e.perSqft)+' / sq ft covered · plot '+(e.plotSqft?Math.round(e.plotSqft).toLocaleString('en-US')+' sq ft':'—');
  const parts=[['Plot',e.plot],['Grey structure',e.grey],['Finishing',e.finish],['Margin',e.margin],['Contingency',e.contingency],['Design & approval',e.design],['Tax',e.tax]].filter(x=>x[1]>0);
- const tot=parts.reduce((a,b)=>a+b[1],0)||1;let off=25,svg='<circle cx="21" cy="21" r="15.9" fill="none" stroke="#f3eefc" stroke-width="6"/>';
+ const tot=parts.reduce((a,b)=>a+b[1],0)||1;let off=25,svg='<circle cx="21" cy="21" r="15.9" fill="none" stroke="#e2e8f0" stroke-width="6"/>';
  parts.forEach((x,i)=>{const pc=x[1]/tot*100;svg+=`<circle cx="21" cy="21" r="15.9" fill="none" stroke="${COLORS[i]}" stroke-width="6" stroke-dasharray="${pc} ${100-pc}" stroke-dashoffset="${off}"/>`;off-=pc;});
  svg+='<text x="21" y="22" text-anchor="middle" font-size="5">🏡</text>';$('#donut').innerHTML=svg;
  $('#legend').innerHTML=parts.map((x,i)=>`<li><i style="background:${COLORS[i]}"></i>${x[0]}: <b>${C.words(x[1])}</b> (${(x[1]/tot*100).toFixed(1)}%)</li>`).join('');
@@ -81,8 +82,8 @@ $('#boqBody').addEventListener('click',e=>{const b=e.target.closest('button');if
  save();renderBOQ();});
 $('#addRow').onclick=()=>{const p=P();const floor=fFloor==='all'?'Site works':fFloor;p.custom.push({key:'c'+Date.now(),floor,s:'Finishing misc',c:'finish',t:'item',n:'New item',u:'nos',qty:1,rate:0});save();renderBOQ();};
 $('#resetAll').onclick=()=>{if(!confirm('Reset all BOQ edits and remove added rows for this project?'))return;const p=P();p.edits={};p.custom=[];save();renderBOQ();};
-$('#csv').onclick=()=>dl((P().name||'boq')+'-BOQ.csv',C.toCSV(C.boq(P(),S())),'text/csv');
-$('#print').onclick=()=>{document.querySelector('nav [data-tab=boq]').click();fFloor='all';renderBOQ();$('#phProj').textContent=P().name;$('#phDate').textContent=new Date().toLocaleDateString('en-GB');window.print();};
+$('#csv').onclick=()=>dl((T(P())||'boq').replace(/[\\/:*?"<>|]+/g,'-')+'-BOQ.csv','"Project","'+T(P()).replace(/"/g,'""')+'"\n'+C.toCSV(C.boq(P(),S())),'text/csv');
+$('#print').onclick=()=>{document.querySelector('nav [data-tab=boq]').click();fFloor='all';renderBOQ();$('#phProj').textContent=T(P());$('#phDate').textContent=new Date().toLocaleDateString('en-GB');window.print();};
 function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name.replace(/[^\w\-. ()]/g,'_');document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);}
 // ---------- schedule ----------
 function renderSchedule(){const e=C.estimate(P(),S()),sc=C.schedule(e.buildTotal,S()),sum=sc.reduce((a,b)=>a+b.pct,0),wk=sc.reduce((a,b)=>a+b.weeks,0);
@@ -156,7 +157,7 @@ function renderHROut(){const p=P();ensureHR(p);ensureRates();const e=C.estimate(
 $('#modeSel').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;P().mode=b.dataset.mode;ensureHR(P());save();applyMode();renderAll();};
 function applyMode(){const hr=P().mode==='highrise';$('#houseEst').hidden=hr;$('#hrEst').hidden=!hr;document.querySelectorAll('#modeSel button').forEach(b=>b.classList.toggle('on',b.dataset.mode===(hr?'highrise':'house')));if(hr)renderHRIn();}
 $('#hrIn').addEventListener('input',e=>{const t=e.target,p=P(),h=p.hr;
- if(t.dataset.h){const k=t.dataset.h,old=h[k];h[k]=t.type==='checkbox'?t.checked:t.tagName==='SELECT'?t.value:num(t.value);
+ if(t.dataset.h){const k=t.dataset.h,old=h[k];h[k]=t.type==='checkbox'?t.checked:t.tagName==='SELECT'?t.value:num(t.value);if(['basements','podium','commercial','residential'].includes(k))h.qTotal=0;if(k==='plate'||k==='groundArea')qKey='';
   if(k==='plotPriceMode')convertPriceMode(h,old,'#hrIn [data-h=plotPrice]');if(k==='plotUnit')convertUnit(h,old,'#hrIn [data-h=plotArea]','#hrIn [data-h=plotPrice]',x=>x==='sqyd'?9:1);
   if(k==='groundAuto'||k==='commAuto'){const e0=C.estimate(P(),S());if(k==='groundAuto'&&!h.groundAuto&&!(h.groundArea>0))h.groundArea=Math.round(e0.plate);if(k==='commAuto'&&!h.commAuto)h.commAreas=Array.from({length:h.commercial|0},(_,i)=>h.commAreas&&h.commAreas[i]>0?h.commAreas[i]:Math.round(e0.plate));save();renderHRIn();renderHROut();return;}
   if(k==='commercial'&&!h.commAuto){h.commAreas=h.commAreas||[];while(h.commAreas.length<(h.commercial|0))h.commAreas.push(Math.round(C.estimate(P(),S()).plate));save();renderHROut();clearTimeout(window.__cf);window.__cf=setTimeout(renderCommFields,400);return;}moneyHints();}
@@ -166,15 +167,61 @@ $('#hrIn').addEventListener('input',e=>{const t=e.target,p=P(),h=p.hr;
 $('#hrIn').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const h=P().hr;
  if(b.dataset.udel!=null)h.units.splice(+b.dataset.udel,1);else if(b.id==='uAdd')h.units.push({id:'u'+Date.now(),name:'Custom unit',beds:2,size:1000,perFloor:1,park:1});
  else if(b.id==='uReset')h.units=C.clone(H.UNIT_TYPES);else if(b.id==='rReset')S().hr=C.clone(H.HR_RATES);else return;save();renderHRIn();renderHROut();});
+// ---------- theme ----------
+function setTheme(t){document.documentElement.dataset.theme=t;try{localStorage.setItem('cc-theme',t);}catch(e){}$('#themeBtn').textContent=t==='dark'?'☀️':'🌙';const m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==='dark'?'#0f1a2e':'#1e3a5f';}
+setTheme(document.documentElement.dataset.theme==='dark'?'dark':'light');$('#themeBtn').onclick=()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark');
+// ---------- Quick entry (single screen) ----------
+let qKey='';const adv=$('#adv');try{if(localStorage.getItem('cc-adv')==='1')adv.open=true;}catch(e){}
+adv.addEventListener('toggle',()=>{try{localStorage.setItem('cc-adv',adv.open?'1':'0');}catch(e){}if(adv.open&&P().mode==='highrise')renderHRIn();});
+const qi=(l,a,v,x)=>`<label>${l}<input type="text" ${x&&x.text?'':'inputmode="decimal"'} autocomplete="off" ${a} value="${esc(v)}"${x&&x.money?' class="money"':''}${x&&x.ph?` placeholder="${esc(x.ph)}"`:''}></label>`;
+const qs=(l,a,opts,v)=>`<label>${l}<select ${a}>${opts.map(([k,t])=>`<option value="${k}" ${k===v?'selected':''}>${t}</option>`).join('')}</select></label>`;
+function buildQuick(){const p=P(),hr=p.mode==='highrise';let x=`<div class="qhead"><h2>⚡ Quick entry</h2><button type="button" id="qUp" class="mini">📎 Upload layout</button></div><p class="sub">Type the main numbers here. Results update instantly below. Everything else is under <b>Advanced settings</b>.</p><div class="qgrid">`;
+ x+=qi('Plot number / name','data-q="plotNo"',p.plotNo||'',{text:1,ph:'e.g. SB-12, Block 7'});
+ if(hr){ensureHR(p);const h=p.hr,U=[['sqyd','sq yd'],['sqft','sq ft']];
+  x+=`<div class="qpair">`+qi('Plot size','data-qh="plotArea"',h.plotArea)+qs('Unit','data-qh="plotUnit"',U,h.plotUnit)+`</div>`;
+  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qh="plotPrice"',h.plotPrice,{money:1})+qs('Price is','data-qh="plotPriceMode"',[['total','Total'],['perunit','Per '+(h.plotUnit==='sqft'?'sq ft':'sq yd')]],h.plotPriceMode)+`</div>`;
+  x+=qi('Total floors (incl. basements)','data-qf="total"','')+qi('Basement parking floors','data-qf="basements"','')+qi('Podium parking floors (above ground)','data-qf="podium"','');
+  x+=qs('Ground floor use','data-qf="groundUse"',H.GUSES,h.groundUse||'parking')+qi('Commercial floors (incl. ground if shops)','data-qf="commercial"','');
+  x+=qi('Ground floor plate (sq ft)','data-qf="groundArea"','',{ph:'auto'})+qi('Upper / typical floor plate (sq ft)','data-qf="plate"','',{ph:'auto'});
+  x+=`<div class="qres" id="qRes"></div></div><details class="qunits"><summary>🏠 Residential unit sizes (optional)</summary><div class="qgrid">`+h.units.map((u,i)=>qi(esc(u.name)+(u.top?' (top floor)':'')+' – sq ft','data-qu="'+i+'"',u.size)+qi('…units per floor','data-qp="'+i+'"',u.perFloor)).join('')+`</div></details>`;}
+ else{const U=[['sqyd','sq yd'],['sqft','sq ft']];if(p.plotUnit==='marla')U.push(['marla','marla']);
+  x+=`<div class="qpair">`+qi('Plot size','data-qa="plotArea"',p.plotArea)+qs('Unit','data-qa="plotUnit"',U,p.plotUnit)+`</div>`;
+  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qa="plotPrice"',p.plotPrice,{money:1})+qs('Price is','data-qa="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],p.plotPriceMode)+`</div>`;
+  x+=qi('Number of floors','data-qa="floors"',p.floors)+qi('Covered area per floor (sq ft)','data-qa="bua"',p.bua)+qs('Quality','data-qa="quality"',[['A','A (premium)'],['B','B (standard)'],['C','C (economy)']],p.quality)+`</div>`;}
+ x+=`<div id="qSum" class="qsum" aria-live="polite"></div>`;$('#quick').innerHTML=x;qKey=p.id+p.mode+(hr?p.hr.units.length:'');moneyHints();}
+function syncQuick(){const p=P();if(qKey!==p.id+p.mode+(p.mode==='highrise'&&p.hr?p.hr.units.length:''))buildQuick();const a=document.activeElement,set=(el,v)=>{if(el&&el!==a&&el.value!==String(v))el.value=v;};
+ const e=C.estimate(p,S());set($('#quick [data-q=plotNo]'),p.plotNo||'');let s='';
+ if(p.mode==='highrise'){const h=p.hr,q=H.quick(h);['plotArea','plotUnit','plotPrice','plotPriceMode'].forEach(k=>set($(`#quick [data-qh=${k}]`),h[k]));
+  ['total','basements','podium','commercial'].forEach(k=>set($(`#quick [data-qf=${k}]`),q[k]));set($('#quick [data-qf=groundUse]'),h.groundUse||'parking');
+  const g=$('#quick [data-qf=groundArea]'),pl=$('#quick [data-qf=plate]'),auto=Math.round(e.g.plate);set(g,h.groundAuto===false&&+h.groundArea>0?h.groundArea:'');set(pl,+h.plate>0?h.plate:'');g.placeholder='auto ≈ '+n0(auto);pl.placeholder='auto ≈ '+n0(auto);
+  h.units.forEach((u,i)=>{set($(`#quick [data-qu="${i}"]`),u.size);set($(`#quick [data-qp="${i}"]`),u.perFloor);});
+  $('#qRes').innerHTML=`🏠 Residential floors = ${q.total} − ${q.parking} parking − ${q.commercial} commercial = <b data-qres>${q.residential}</b>`+(q.short?`<span class="mhint bad">Total is ${q.short} floor(s) short: add floors or reduce parking / commercial.</span>`:'');
+  const pill=(l,v,sb)=>`<div class="pill">${l}<b>${v}</b>${sb?`<small>${sb}</small>`:''}</div>`;
+  s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills">`+pill('Floors',e.totalFloors,`${e.nB} basement · ${e.nP} podium · ${e.nC} commercial · ${e.nR} residential`)+pill('Ground floor',n0(e.ground)+' sq ft',(h.groundAuto===false?'typed':'auto')+' · '+(e.floors.find(f=>f.lvl===0)||{label:'—'}).label)+pill('Typical plate',n0(e.plate)+' sq ft',+h.plate>0?'typed':'auto from plot')+pill('Gross built-up',n0(e.gross)+' sq ft')+pill('Units',e.totalUnits,n0(e.resSell)+' sq ft sellable')+pill('Building cost',C.words(e.buildTotal),fmt(e.perSellable)+' / sellable sq ft')+pill('Plot',C.words(e.plot))+pill('Parking',`${e.provided} / ${e.required}`,e.provided>=e.required?'✅ enough':'⚠️ short')+`</div>`+e.warnings.slice(0,3).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
+ else{F.forEach(k=>set($(`#quick [data-qa=${k}]`),p[k]));
+  s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills"><div class="pill">Covered area<b>${n0(e.totalArea)} sq ft</b></div><div class="pill">Building<b>${C.words(e.buildTotal)}</b><small>${fmt(e.perSqft)} / sq ft</small></div><div class="pill">Plot<b>${C.words(e.plot)}</b></div></div>`;}
+ $('#qSum').innerHTML=s;}
+$('#quick').addEventListener('input',ev=>{const t=ev.target,p=P(),d=t.dataset,v=t.tagName==='SELECT'?t.value:t.value;
+ if(d.q==='plotNo'){p.plotNo=t.value;save();renderProjSel();syncQuick();return;}
+ const fwd=(sel)=>{const el=$(sel);if(!el)return false;el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));return true;};
+ if(d.qa){if(!fwd('#'+d.qa)){p[d.qa]=t.tagName==='SELECT'?v:num(v);save();renderEstimate();}return;}
+ if(d.qh){if(!$(`#hrIn [data-h=${d.qh}]`))renderHRIn();fwd(`#hrIn [data-h=${d.qh}]`);if(d.qh==='plotUnit')buildQuick();syncQuick();return;}
+ const h=p.hr;if(d.qf){if(t.tagName!=='SELECT'&&d.qf!=='groundArea'&&d.qf!=='plate'&&t.value.trim()==='')return;H.quickSet(h,d.qf,t.tagName==='SELECT'?v:num(v));}
+ else if(d.qu!=null)h.units[+d.qu].size=num(v);else if(d.qp!=null)h.units[+d.qp].perFloor=num(v);else return;
+ save();if(adv.open)renderHRIn();renderHROut();});
+$('#quick').addEventListener('click',e=>{if(e.target.closest('#qUp')){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}});
+$('#quick').addEventListener('change',e=>{if(e.target.dataset.qf)syncQuick();});
+{const rE=renderEstimate;renderEstimate=function(){rE();syncQuick();};}
+{const rO=renderHROut;renderHROut=function(){rO();syncQuick();};}
 // layout uploads live in IndexedDB (not localStorage) so big PDFs/images fit
 function idb(op,key,val){return new Promise((res,rej)=>{try{if(!window.indexedDB)return rej('no idb');const r=indexedDB.open('constructcalc',1);r.onupgradeneeded=()=>r.result.createObjectStore('layouts');r.onerror=()=>rej(r.error);r.onblocked=()=>rej('blocked');
  r.onsuccess=()=>{try{const tx=r.result.transaction('layouts',op==='get'?'readonly':'readwrite'),os=tx.objectStore('layouts');tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||'abort');const q=op==='get'?os.get(key):op==='put'?os.put(val,key):os.delete(key);q.onsuccess=()=>{if(op==='get')res(q.result);};q.onerror=()=>rej(q.error);if(op!=='get')tx.oncomplete=()=>res();}catch(e){rej(e);}};}catch(e){rej(e);}});} // writes resolve only once committed (WebKit private mode fails at commit)
 function renderDrawings(){const p=P();if(p.mode!=='highrise'){$('#drawBody').innerHTML=`<div class="card"><h2>📐 Concept drawings</h2><p>Drawings are generated for <b>High-rise / Apartment</b> projects (section, typical floor plan and unit layouts).</p><button id="toHR" class="accent">🏢 Switch this project to High-rise</button></div>`;$('#toHR').onclick=()=>{P().mode='highrise';ensureHR(P());save();applyMode();renderAll();};return;}
- ensureHR(p);const e=C.estimate(p,S()),h=p.hr,list=[['section','Building section / stack',H.sectionSVG(e,p.name)],['typical','Typical floor plan',H.floorPlanSVG(e,h,false)]];
+ ensureHR(p);const e=C.estimate(p,S()),h=p.hr,list=[['section','Building section / stack',H.sectionSVG(e,T(p))],['typical','Typical floor plan',H.floorPlanSVG(e,h,false)]];
  if(e.hasTop)list.push(['penthouse','Penthouse floor plan',H.floorPlanSVG(e,h,true)]);h.units.filter(u=>+u.size>0).forEach((u,i)=>list.push(['unit'+i,'Unit layout – '+u.name,H.unitSVG(u)]));
  $('#drawBody').innerHTML=`<div class="warn">✏️ Concept sketches only – not for construction. Get drawings from a licensed architect / structural engineer.</div><div class="bar" style="margin-top:10px"><button id="drPrint">🖨️ Print all drawings</button></div>`+list.map(([k,t,svg])=>`<div class="card drawCard" data-d="${k}"><h2>${esc(t)}</h2><div class="svgBox">${svg}</div><div class="bar"><button data-dl="svg">⬇️ SVG</button><button data-dl="png">⬇️ PNG</button></div></div>`).join('');
  $('#drPrint').onclick=()=>{document.body.classList.add('printDraw');window.print();setTimeout(()=>document.body.classList.remove('printDraw'),500);};}
-$('#drawBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return;const card=b.closest('[data-d]'),svg=card.querySelector('svg').outerHTML,name=(P().name+'-'+card.dataset.d).replace(/\s+/g,'-');
+$('#drawBody').addEventListener('click',e=>{const b=e.target.closest('[data-dl]');if(!b)return;const card=b.closest('[data-d]'),svg=card.querySelector('svg').outerHTML,name=(T(P())+'-'+card.dataset.d).replace(/\s+/g,'-');
  if(b.dataset.dl==='svg')return dl(name+'.svg',svg,'image/svg+xml');const img=new Image(),u=URL.createObjectURL(new Blob([svg],{type:'image/svg+xml'}));img.onload=()=>{const cv=document.createElement('canvas'),s=2;cv.width=img.width*s;cv.height=img.height*s;const cx=cv.getContext('2d');cx.scale(s,s);cx.drawImage(img,0,0);URL.revokeObjectURL(u);cv.toBlob(bl=>{const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download=name+'.png';document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),500);});};img.src=u;});
 addEventListener('afterprint',()=>document.body.classList.remove('printDraw'));
 

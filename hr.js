@@ -25,7 +25,7 @@ const DEFAULT_HR={plotArea:1000,plotUnit:'sqyd',plotW:0,plotD:0,plotPrice:150000
  far:8,coverage:65,setFront:20,setRear:10,setSide:10,farExclParking:true,
  basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commEff:75,
  units:UNIT_TYPES,commPark:1000,carArea:320,parkEff:85,lifts:0,
- sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[]};
+ sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[],groundUse:'parking',qTotal:0};
 const SQ={sqyd:9,sqft:1};
 function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.plotW,D=+h.plotD;
  if(W>0&&!(D>0))D=plotSqft/W;else if(D>0&&!(W>0))W=plotSqft/D;else if(!(W>0&&D>0)){W=Math.sqrt(plotSqft/1.5);D=plotSqft/W;} // one dimension given: derive the other from the area // assume 1:1.5 plot if dims not given
@@ -44,8 +44,13 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});const g=geom(h),w=[],p
  const unitRows=types.map(t=>{const per=+t.perFloor||0,floors=t.top?(hasTop?1:0):typFloors,count=per*floors;return{id:t.id,name:t.name,size:+t.size,perFloor:per,floors,count,area:count*t.size,park:count*(+t.park||0),top:!!t.top};});
  const totalUnits=unitRows.reduce((a,u)=>a+u.count,0),resSell=unitRows.reduce((a,u)=>a+u.area,0);
  const floors=[];for(let i=nB;i>=1;i--)floors.push({key:'B'+i,type:'basement',label:'Basement '+i,area:bPlate,lvl:-i});
- let lvl=0;for(let i=0;i<nP;i++)floors.push({key:'P'+i,type:'parking',label:i?'Podium parking '+i:'Ground parking',area:plate,lvl:lvl++});
- for(let i=0;i<nC;i++)floors.push({key:'C'+i,type:'commercial',label:'Commercial '+(i+1),area:plate,lvl:lvl++});
+ const GU={commercial:'Ground – commercial / shops',mixed:'Ground – mixed use',lobby:'Ground – lobby + shops'};
+ const PL=[],CL=[];for(let i=0;i<nP;i++)PL.push({key:'P'+i,type:'parking',label:'Podium parking '+(i+1),area:plate});
+ for(let i=0;i<nC;i++)CL.push({key:'C'+i,type:'commercial',label:'Commercial '+(i+1),area:plate});
+ const gNon=GU[h.groundUse]&&nC>0,order=gNon?[CL[0],...PL,...CL.slice(1)]:[...PL,...CL];
+ if(gNon)CL[0].label=GU[h.groundUse];else if(PL[0])PL[0].label='Ground parking';
+ if(!gNon&&PL.length)PL.slice(1).forEach((f,i)=>f.label='Podium parking '+(i+1));
+ let lvl=0;order.forEach(f=>{f.lvl=lvl++;floors.push(f);});
  for(let i=0;i<nR;i++)floors.push({key:'R'+i,type:'residential',label:(hasTop&&i===nR-1)?'Penthouse floor':'Residential '+(i+1),area:plate,lvl:lvl++});
  // user-chosen built areas: ground floor (level 0) and each commercial floor
  floors.forEach(f=>{if(f.type==='commercial'&&h.commAuto===false){const v=+(h.commAreas||[])[+f.key.slice(1)];if(v>0)f.area=v;}if(f.lvl===0&&h.groundAuto===false&&+h.groundArea>0)f.area=+h.groundArea;});
@@ -103,28 +108,28 @@ function boqDefaults(h,R){R=Object.assign(clone(HR_RATES),R||{});const c=calc(h,
   return{key:'hr:'+i,floor:'Building',s:it.s,c:it.c,t:it.t,n:it.n,u:it.u,qty:+((basis[it.basis]||0)*it.q).toFixed(2),rate};}).filter(r=>r.qty>0);}
 // ---------- drawings ----------
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const COL={basement:'#cfd2e6',parking:'#bde0fe',commercial:'#ffe5a0',residential:'#ffc8dd',penthouse:'#cdb4db',core:'#e9e3f5',corr:'#f6f2fb'};
+const COL={basement:'#cfd2e6',parking:'#bde0fe',commercial:'#ffe5a0',residential:'#bfdbfe',penthouse:'#c7d2fe',core:'#e2e8f0',corr:'#f1f5f9'};
 const STAMP=(w,y)=>`<text x="${w/2}" y="${y}" text-anchor="middle" font-size="12" fill="#c0392b" font-weight="700">CONCEPT SKETCH – NOT FOR CONSTRUCTION</text>`;
-const wrap=(w,h,body,title)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" font-family="Nunito,Segoe UI,Arial,sans-serif"><rect width="${w}" height="${h}" fill="#fff"/><text x="12" y="22" font-size="15" font-weight="800" fill="#6d597a">${esc(title)}</text>${body}${STAMP(w,h-10)}</svg>`;
+const wrap=(w,h,body,title)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" font-family="Nunito,Segoe UI,Arial,sans-serif"><rect width="${w}" height="${h}" fill="#fff"/><text x="12" y="22" font-size="15" font-weight="800" fill="#475569">${esc(title)}</text>${body}${STAMP(w,h-10)}</svg>`;
 function sectionSVG(c,name){const maxA=Math.max(...c.floors.map(f=>f.area),1),n=c.floors.length,fh=Math.max(10,Math.min(26,560/Math.max(n,1))),W=420,bx=120,bw=200,top=40,gy=top+c.above*fh;let s='';
  const H=gy+c.nB*fh+60;
  c.floors.forEach(f=>{const y=f.lvl>=0?gy-(f.lvl+1)*fh:gy+(-f.lvl-1)*fh;const t=f.label==='Penthouse floor'?'penthouse':f.type;
-  const fw=Math.max(30,bw*f.area/maxA),fx=bx+(bw-fw)/2;s+=`<rect x="${fx}" y="${y}" width="${fw}" height="${fh}" fill="${COL[t]}" stroke="#6d597a" stroke-width="1"/>`;if(fh>=13)s+=`<text x="${bx+bw/2}" y="${y+fh/2+4}" text-anchor="middle" font-size="${Math.min(11,fh-3)}" fill="#3d405b">${esc(f.label)}${f.type==='commercial'||f.lvl===0?' · '+Math.round(f.area).toLocaleString('en-US')+' sf':''}</text>`;});
+  const fw=Math.max(30,bw*f.area/maxA),fx=bx+(bw-fw)/2;s+=`<rect x="${fx}" y="${y}" width="${fw}" height="${fh}" fill="${COL[t]}" stroke="#475569" stroke-width="1"/>`;if(fh>=13)s+=`<text x="${bx+bw/2}" y="${y+fh/2+4}" text-anchor="middle" font-size="${Math.min(11,fh-3)}" fill="#1e293b">${esc(f.label)}${f.type==='commercial'||f.lvl===0?' · '+Math.round(f.area).toLocaleString('en-US')+' sf':''}</text>`;});
  s+=`<line x1="40" y1="${gy}" x2="${W-40}" y2="${gy}" stroke="#7a5c3c" stroke-width="3"/><text x="44" y="${gy-4}" font-size="10" fill="#7a5c3c">Ground level</text>`;
  const lg=[['basement',`Basement parking ×${c.nB}`],['parking',`Ground/podium parking ×${c.nP}`],['commercial',`Commercial ×${c.nC}`],['residential',`Residential ×${c.nR-(c.hasTop?1:0)}`]].concat(c.hasTop?[['penthouse','Penthouse ×1']]:[]);
- lg.forEach((l,i)=>{s+=`<rect x="${bx+bw+12}" y="${top+i*18}" width="12" height="12" fill="${COL[l[0]]}" stroke="#6d597a"/><text x="${bx+bw+28}" y="${top+i*18+10}" font-size="10">${l[1]}</text>`;});
- s+=`<text x="12" y="${H-28}" font-size="11" fill="#3d405b">${c.totalFloors} floors · plate ${Math.round(c.plate).toLocaleString('en-US')} sq ft · gross ${Math.round(c.gross).toLocaleString('en-US')} sq ft</text>`;
+ lg.forEach((l,i)=>{s+=`<rect x="${bx+bw+12}" y="${top+i*18}" width="12" height="12" fill="${COL[l[0]]}" stroke="#475569"/><text x="${bx+bw+28}" y="${top+i*18+10}" font-size="10">${l[1]}</text>`;});
+ s+=`<text x="12" y="${H-28}" font-size="11" fill="#1e293b">${c.totalFloors} floors · plate ${Math.round(c.plate).toLocaleString('en-US')} sq ft · gross ${Math.round(c.gross).toLocaleString('en-US')} sq ft</text>`;
  return wrap(W+60,H,s,'Building section / stack – '+name);}
 function floorPlanSVG(c,h,top){const types=(h.units||[]).filter(t=>top?t.top:!t.top),list=[];types.forEach(t=>{for(let i=0;i<(+t.perFloor||0);i++)list.push(t);});
  const plate=c.plate||1,ratio=Math.max(1,(c.g.bw||1)/Math.max(c.g.bd||1,1)),PW=Math.sqrt(plate*ratio),PD=plate/PW,sc=Math.min(560/PW,360/PD),W=PW*sc,D=PD*sc,ox=30,oy=40;
  const corrD=Math.max(D*0.14,18),rowD=(D-corrD)/2,coreW=Math.min(W*0.22,Math.max(40,c.core*sc*sc*0.5/corrD));
- let s=`<rect x="${ox}" y="${oy}" width="${W}" height="${D}" fill="#fff" stroke="#3d405b" stroke-width="2"/><rect x="${ox}" y="${oy+rowD}" width="${W}" height="${corrD}" fill="${COL.corr}"/>`;
+ let s=`<rect x="${ox}" y="${oy}" width="${W}" height="${D}" fill="#fff" stroke="#1e293b" stroke-width="2"/><rect x="${ox}" y="${oy+rowD}" width="${W}" height="${corrD}" fill="${COL.corr}"/>`;
  // core block spans the corridor in the middle
- const cx=ox+W/2-coreW/2;s+=`<rect x="${cx}" y="${oy+rowD-corrD*0.6}" width="${coreW}" height="${corrD*2.2}" fill="${COL.core}" stroke="#6d597a"/><text x="${cx+coreW/2}" y="${oy+rowD+corrD/2+4}" text-anchor="middle" font-size="10" font-weight="700">CORE</text><text x="${cx+coreW/2}" y="${oy+rowD+corrD/2+15}" text-anchor="middle" font-size="8">lifts · stairs</text>`;
+ const cx=ox+W/2-coreW/2;s+=`<rect x="${cx}" y="${oy+rowD-corrD*0.6}" width="${coreW}" height="${corrD*2.2}" fill="${COL.core}" stroke="#475569"/><text x="${cx+coreW/2}" y="${oy+rowD+corrD/2+4}" text-anchor="middle" font-size="10" font-weight="700">CORE</text><text x="${cx+coreW/2}" y="${oy+rowD+corrD/2+15}" text-anchor="middle" font-size="8">lifts · stairs</text>`;
  s+=`<text x="${ox+6}" y="${oy+rowD+corrD/2+4}" font-size="9" fill="#7a7d9c">corridor</text>`;
  const rows=[[],[]],ar=[0,0];list.sort((a,b)=>b.size-a.size).forEach(t=>{const i=ar[0]<=ar[1]?0:1;rows[i].push(t);ar[i]+=+t.size;});
  rows.forEach((r,ri)=>{const tot=r.reduce((a,t)=>a+ +t.size,0)||1;let x=ox;const y=ri?oy+rowD+corrD:oy;
-  r.forEach(t=>{const w=W*t.size/tot;const col=t.top?COL.penthouse:COL.residential;s+=`<rect x="${x}" y="${y}" width="${w}" height="${rowD}" fill="${col}" stroke="#6d597a"/>`;
+  r.forEach(t=>{const w=W*t.size/tot;const col=t.top?COL.penthouse:COL.residential;s+=`<rect x="${x}" y="${y}" width="${w}" height="${rowD}" fill="${col}" stroke="#475569"/>`;
    if(w>34){s+=`<text x="${x+w/2}" y="${y+rowD/2-2}" text-anchor="middle" font-size="${w>70?11:9}" font-weight="700">${esc(t.name)}</text><text x="${x+w/2}" y="${y+rowD/2+11}" text-anchor="middle" font-size="${w>70?10:8}">${(+t.size).toLocaleString('en-US')} sq ft</text>`;}x+=w;});});
  const used=list.reduce((a,t)=>a+ +t.size,0);
  s+=`<text x="${ox}" y="${oy+D+18}" font-size="11">Plate ≈ ${Math.round(PW)} × ${Math.round(PD)} ft (${Math.round(plate).toLocaleString('en-US')} sq ft) · ${list.length} units · ${Math.round(used).toLocaleString('en-US')} sq ft in units · core/corridor ${h.corePct}%</text>`;
@@ -138,10 +143,20 @@ function rooms(t){const p=PROG[Math.min(4,Math.max(0,+t.beds||0))],A=+t.size||0;
 function unitSVG(t){const A=+t.size||1,UW=Math.sqrt(A*1.5),UD=A/UW,sc=Math.min(420/UW,280/UD),W=UW*sc,D=UD*sc,ox=30,oy=40,rs=rooms(t);
  const b1=rs.filter(r=>/bed|Living|Servant/i.test(r.n)),b2=rs.filter(r=>/Bath|Kitchen|Balcony|Passage/i.test(r.n)),b3=rs.filter(r=>!b1.includes(r)&&!b2.includes(r));
  let y=0;const bands=[b1,b3,b2].filter(x=>x.length).map(band=>{const bd=UD*band.reduce((q,r)=>q+r.a,0)/A,o=[band,y,bd];y+=bd;return o;});let s='';bands.forEach(([band,y0,bd])=>{let x=0;const tot=band.reduce((a,r)=>a+r.a,0)||1;band.forEach(r=>{const w=UW*r.a/tot;const isP=/Passage/.test(r.n);
-  s+=`<rect x="${ox+x*sc}" y="${oy+y0*sc}" width="${w*sc}" height="${bd*sc}" fill="${isP?'#f6f2fb':/Bath/.test(r.n)?'#d7f3ff':/Kitchen/.test(r.n)?'#fff1c1':/Balcony/.test(r.n)?'#d8f5d0':'#ffe5ec'}" stroke="#6d597a"/>`;
+  s+=`<rect x="${ox+x*sc}" y="${oy+y0*sc}" width="${w*sc}" height="${bd*sc}" fill="${isP?'#f1f5f9':/Bath/.test(r.n)?'#d7f3ff':/Kitchen/.test(r.n)?'#fff1c1':/Balcony/.test(r.n)?'#d8f5d0':'#e6edf6'}" stroke="#475569"/>`;
   if(w*sc>38)s+=`<text x="${ox+(x+w/2)*sc}" y="${oy+(y0+bd/2)*sc-2}" text-anchor="middle" font-size="${w*sc>80?11:8.5}" font-weight="700">${esc(r.n)}</text><text x="${ox+(x+w/2)*sc}" y="${oy+(y0+bd/2)*sc+11}" text-anchor="middle" font-size="${w*sc>80?10:8}">${Math.round(w)}'×${Math.round(bd)}' · ${Math.round(r.a)} sf</text>`;x+=w;});});
- s+=`<rect x="${ox}" y="${oy}" width="${W}" height="${D}" fill="none" stroke="#3d405b" stroke-width="2.5"/><text x="${ox}" y="${oy+D+18}" font-size="11">${esc(t.name)} · ${A.toLocaleString('en-US')} sq ft ≈ ${Math.round(UW)}' × ${Math.round(UD)}' · rooms add up to ${Math.round(rs.reduce((a,r)=>a+r.a,0))} sq ft</text>`;
+ s+=`<rect x="${ox}" y="${oy}" width="${W}" height="${D}" fill="none" stroke="#1e293b" stroke-width="2.5"/><text x="${ox}" y="${oy+D+18}" font-size="11">${esc(t.name)} · ${A.toLocaleString('en-US')} sq ft ≈ ${Math.round(UW)}' × ${Math.round(UD)}' · rooms add up to ${Math.round(rs.reduce((a,r)=>a+r.a,0))} sq ft</text>`;
  return wrap(Math.max(W+60,420),D+90,s,'Concept unit layout – '+t.name);}
-const api={HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
+// ---- quick entry: total floors (incl. basements) drive residential = total - parking - commercial
+const GUSES=[['commercial','Commercial / Shops'],['mixed','Mixed use'],['lobby','Lobby + Shops'],['parking','Parking']];
+function quick(h){const b=Math.max(0,+h.basements|0),p=Math.max(0,+h.podium|0),c=Math.max(0,+h.commercial|0),r=Math.max(0,+h.residential|0);
+ const total=+h.qTotal>0?+h.qTotal|0:b+p+c+r,res=total-b-p-c;return{total,basements:b,podium:p,parking:b+p,commercial:c,residential:Math.max(0,res),short:res<0?-res:0};}
+function quickSet(h,k,v){if(!(+h.qTotal>0))h.qTotal=quick(h).total;
+ if(k==='groundUse'){h.groundUse=v;}else if(k==='groundArea'){v=+v||0;if(v>0){h.groundAuto=false;h.groundArea=v;}else{h.groundAuto=true;h.groundArea=0;}return quick(h);}
+ else if(k==='plate'){h.plate=+v>0?+v:0;return quick(h);}
+ else if(k==='total')h.qTotal=Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=Math.max(0,+v|0);else{h[k]=v;return quick(h);}
+ const gu=h.groundUse||'parking';if(gu==='parking'){if(!(+h.podium>0))h.podium=1;}else if(!(+h.commercial>0))h.commercial=1;
+ const q=quick(h);h.residential=q.residential;return q;}
+const api={GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
 if(typeof module!=='undefined')module.exports=api;else root.HR=api;
 })(this);
