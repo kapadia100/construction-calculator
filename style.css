@@ -187,3 +187,6 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 @media print{body.printReport #boq,body.printReport #estimate,body.printReport #drawings{display:none!important}}
 @media(max-width:760px){html{scroll-padding-bottom:150px;scroll-padding-top:12px}}
 .qbs{display:contents}
+
+.rt tr.grp td{background:var(--soft);font-weight:700;padding:6px 8px;border-radius:6px}.rt tr.lowc td:first-child{box-shadow:inset 3px 0 0 #d97706}.rt small.rawsrc{display:block;color:var(--muted);font-size:.7rem;max-width:220px;white-space:normal}.rt small.need{display:block;color:#b45309;font-weight:700}.readInfo{font-size:.8rem}
+@media (max-width:600px){.rt tr.grp{display:block!important;padding:8px 0 0!important;border:0!important}.rt tr.grp td{display:block}.rt tr.grp td:empty{display:none}.rt.fa select{width:100%}}

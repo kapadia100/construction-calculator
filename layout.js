@@ -60,9 +60,9 @@ async function toCanvas(blob,max,min){let src;try{src=await createImageBitmap(bl
  const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(src,0,0,cv.width,cv.height);if(src.close)src.close();return cv;}
 async function shrink(f,max,q){const cv=await toCanvas(f,max);return await new Promise(r=>cv.toBlob(b=>r(b||f),'image/jpeg',q));}
 // whiten long straight wall lines so the text reader sees only the labels
-function unline(cv){const w=cv.width,h=cv.height,cx=cv.getContext('2d'),d=cx.getImageData(0,0,w,h),a=d.data,L=Math.max(45,Math.round(Math.min(w,h)/25)),m=new Uint8Array(w*h);
- for(let y=0;y<h;y++){let s=-1;for(let x=0;x<=w;x++){const dk=x<w&&a[(y*w+x)*4]<128;if(dk&&s<0)s=x;if(!dk&&s>=0){if(x-s>=L)for(let k=s;k<x;k++)m[y*w+k]=1;s=-1;}}}
- for(let x=0;x<w;x++){let s=-1;for(let y=0;y<=h;y++){const dk=y<h&&a[(y*w+x)*4]<128;if(dk&&s<0)s=y;if(!dk&&s>=0){if(y-s>=L)for(let k=s;k<y;k++)m[k*w+x]=1;s=-1;}}}
+function unline(cv,thr,minL){thr=thr||128;const w=cv.width,h=cv.height,cx=cv.getContext('2d'),d=cx.getImageData(0,0,w,h),a=d.data,L=minL||Math.max(45,Math.round(Math.min(w,h)/25)),m=new Uint8Array(w*h);
+ for(let y=0;y<h;y++){let s=-1;for(let x=0;x<=w;x++){const dk=x<w&&a[(y*w+x)*4]<thr;if(dk&&s<0)s=x;if(!dk&&s>=0){if(x-s>=L)for(let k=s;k<x;k++)m[y*w+k]=1;s=-1;}}}
+ for(let x=0;x<w;x++){let s=-1;for(let y=0;y<=h;y++){const dk=y<h&&a[(y*w+x)*4]<thr;if(dk&&s<0)s=y;if(!dk&&s>=0){if(y-s>=L)for(let k=s;k<y;k++)m[k*w+x]=1;s=-1;}}}
  for(let i=0;i<w*h;i++)if(m[i]){a[i*4]=a[i*4+1]=a[i*4+2]=255;}cx.putImageData(d,0,0);return cv;}
 // rendered brochures (furniture, carpets, coloured fills): keep only near-black, unsaturated ink = the text
 function darkMask(cv,T){const cx=cv.getContext('2d',{willReadFrequently:true}),d=cx.getImageData(0,0,cv.width,cv.height),a=d.data,sc=255/(T-40);for(let i=0;i<a.length;i+=4){const r=a[i],g=a[i+1],b=a[i+2],mx=r>g?(r>b?r:b):(g>b?g:b),mn=r<g?(r<b?r:b):(g<b?g:b);let v=255;if(mx<T&&mx-mn<60){v=(.299*r+.587*g+.114*b-40)*sc;v=v<0?0:v>255?255:v;}a[i]=a[i+1]=a[i+2]=v;}cx.putImageData(d,0,0);return cv;}
@@ -85,7 +85,7 @@ function free(cv){if(cv){cv.width=cv.height=0;}}
 // OCR one canvas; m maps canvas px back to the source: native = s + px/k. A stuck page is abandoned after 90 s (the worker is restarted).
 async function ocr(cv,page,m){m=m||{sx:0,sy:0,k:1};if(window.LAY_DEBUG&&page===LAY_DEBUG.page)LAY_DEBUG.c.push(cv.toDataURL('image/png'));const w=await ocrWorker();let data;
  try{({data}=await withTimeout(w.recognize(cv),90000));}catch(e){try{worker&&worker.terminate();}catch(_){}worker=null;return [];}
- const out=[];(data.lines||[]).forEach(l=>{const t=(l.text||'').trim();if(!t||(l.confidence<25&&!/\d.*[x×X*].*\d|\d['’]/.test(t)))return;const b=l.bbox;out.push({text:t,x:m.sx+b.x0/m.k,y:m.sy+b.y0/m.k,w:(b.x1-b.x0)/m.k,h:(b.y1-b.y0)/m.k,page,conf:l.confidence,frame:m.frame||0});});return out;}
+ const out=[];(data.lines||[]).forEach(l=>{const t=(l.text||'').trim();if(!t||(l.confidence<25&&!/\d.*[x×X*].*\d|\d['’]/.test(t)))return;const b=l.bbox;out.push({text:t,x:m.sx+b.x0/m.k,y:m.sy+b.y0/m.k,w:(b.x1-b.x0)/m.k,h:(b.y1-b.y0)/m.k,page,conf:l.confidence,frame:m.frame||0,words:(l.words||[]).filter(w=>w.text&&w.text.trim()&&w.bbox).map(w=>({s:w.text.trim(),x:m.sx+(w.bbox.x0+w.bbox.x1)/2/m.k}))});});return out;}
 // pdf.js text items -> lines. Items are grouped per text direction (CAD exports often have vertical text and one item per word or letter).
 function pdfLines(items,vh,page){const it=items.filter(i=>i.str&&i.str.trim()).map(i=>{const [a,b,c,d,e,f]=i.transform,len=Math.hypot(a,b)||1,dx=a/len,dy=b/len,h=Math.hypot(c,d)||len||10,fr=Math.round(Math.atan2(dy,dx)/(Math.PI/2))&3;
   const u=e*dx+f*dy,v=-e*dy+f*dx;return {text:i.str,x:u,y:(fr?-v:vh-f)-h,w:i.width||i.str.length*h*.5,h,page,conf:96,frame:fr};}).sort((a,b)=>a.frame-b.frame||a.y-b.y||a.x-b.x);
@@ -99,11 +99,29 @@ function pdfSrc(pg){const v=pg.getViewport({scale:1});return {W:v.width,H:v.heig
 async function imgSrc(blob){let src;try{src=await createImageBitmap(blob,{imageOrientation:'from-image'});}catch(_){src=await loadImg(blob);}
  return {W:src.width,H:src.height,pts:false,async draw(sx,sy,sw,sh,k){const cv=document.createElement('canvas');cv.width=Math.max(1,Math.round(sw*k));cv.height=Math.max(1,Math.round(sh*k));const cx=cv.getContext('2d',{willReadFrequently:true});cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(src,sx,sy,sw,sh,0,0,cv.width,cv.height);return cv;},close(){if(src.close)src.close();}};}
 function rot(cv,deg){const r=document.createElement('canvas');r.width=cv.height;r.height=cv.width;const cx=r.getContext('2d',{willReadFrequently:true});cx.translate(r.width/2,r.height/2);cx.rotate(deg*Math.PI/180);cx.drawImage(cv,-cv.width/2,-cv.height/2);return r;}
+// turn any canvas into a source (used after straightening a photo/scan)
+function canvasSrc(cv){return {W:cv.width,H:cv.height,pts:false,async draw(sx,sy,sw,sh,k){const c=document.createElement('canvas');c.width=Math.max(1,Math.round(sw*k));c.height=Math.max(1,Math.round(sh*k));const x=c.getContext('2d',{willReadFrequently:true});x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(cv,sx,sy,sw,sh,0,0,c.width,c.height);return c;},close(){free(cv);}};}
+function rotAny(cv,deg){const t=deg*Math.PI/180,c=Math.abs(Math.cos(t)),s=Math.abs(Math.sin(t)),r=document.createElement('canvas');r.width=Math.round(cv.width*c+cv.height*s);r.height=Math.round(cv.width*s+cv.height*c);const x=r.getContext('2d',{willReadFrequently:true});x.fillStyle='#fff';x.fillRect(0,0,r.width,r.height);x.translate(r.width/2,r.height/2);x.rotate(t);x.drawImage(cv,-cv.width/2,-cv.height/2);return r;}
+// skew of a photo/scan in degrees (projection profile: text rows give the sharpest histogram when level)
+function skewAngle(cv){const w=cv.width,h=cv.height,a=cv.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,xs=[],ys=[];const st=Math.max(1,Math.round(Math.sqrt(w*h/250000)));
+ for(let y=0;y<h;y+=st)for(let x=0;x<w;x+=st){if(a[(y*w+x)*4]<130){xs.push(x);ys.push(y);}}if(xs.length<300)return 0;
+ const sc=deg=>{const t=Math.tan(deg*Math.PI/180),B=new Float64Array(h*2+w+4);for(let i=0;i<xs.length;i++){const b=Math.round(ys[i]-xs[i]*t+w);if(b>=0&&b<B.length)B[b]++;}let s=0;for(let i=0;i<B.length;i++)s+=B[i]*B[i];return s;};
+ let best=0,bs=sc(0);for(let d=-12;d<=12;d+=.5){const v=sc(d);if(v>bs*1.0001){bs=v;best=d;}}for(let d=best-.4;d<=best+.4;d+=.1){const v=sc(d);if(v>bs){bs=v;best=d;}}return Math.round(best*10)/10;}
+async function straighten(src){const L=Math.max(src.W,src.H),k=Math.min(src.pts?4:1,1000/L),sm=gray(await src.draw(0,0,src.W,src.H,k));unline(sm);const a=skewAngle(sm);free(sm);
+ if(Math.abs(a)<.4)return null;const kf=Math.min(src.pts?4:1.5,3400/L),full=await src.draw(0,0,src.W,src.H,kf),r=rotAny(full,-a);free(full);return {src:canvasSrc(r),angle:a};}
+// how much of what we read looks like a plan / schedule (used to pick the page orientation)
+function looks(lines){let s=0;lines.forEach(l=>{const t=l.text;if(LP.dims(t).length)s+=2;if(LP.areas(t).length)s+=2;if(LP.roomsIn(t).length||LP.floorOf(t)||LP.unitIn(t))s+=1.5;else if(/^[A-Za-z]{4,}$/.test(t.split(/\s+/)[0]||''))s+=.2;});return s;}
 const TILE=2400,OVER=360;
 // read one page/image: quick look -> if it is a drawing, a sharper tiled pass (tiny CAD text) -> sideways passes when labels are missing their sizes
-async function readSource(src,page,always,step){const L=Math.max(src.W,src.H);
+async function readSource(src,page,always,step,fixed){let L=Math.max(src.W,src.H);
+ // 1) straighten tilted photos/scans (a few degrees of tilt breaks the text reader)
+ if(!fixed){step&&step('straightening',.02);try{const s=await straighten(src);if(s){src=s.src;L=Math.max(src.W,src.H);LAYINFO.push(`page ${page+1}: straightened ${s.angle}°`);}}catch(_){}}
  let k=Math.min(src.pts?4:1.5,1400/L),cv=await src.draw(0,0,src.W,src.H,k);const rich=colourful(cv)>.12,prep=c=>unline(rich?darkMask(c,150):gray(c));
- prep(cv);let lines=await ocr(cv,page,{sx:0,sy:0,k});free(cv);
+ prep(cv);let lines=await ocr(cv,page,{sx:0,sy:0,k});
+ // 2) sideways / upside-down page: try the other three turns when the upright read finds little
+ if(!fixed&&!cancelReq&&looks(lines)<6){let best={deg:0,s:looks(lines)};for(const deg of [90,270,180]){if(cancelReq)break;step&&step('checking page direction',.05);const r=rotAny(cv,deg),rl=await ocr(r,page,{sx:0,sy:0,k});free(r);const s=looks(rl);if(s>best.s*1.6+3)best={deg,s};}
+  if(best.deg){free(cv);const kf=Math.min(src.pts?4:1.5,3400/L),full=await src.draw(0,0,src.W,src.H,kf),r=rotAny(full,best.deg);free(full);LAYINFO.push(`page ${page+1}: turned ${best.deg}°`);return await readSource(canvasSrc(r),page,always,step,true);}}
+ free(cv);
  if(cancelReq||(!always&&!PLANRE.test(lines.map(l=>l.text).join(' '))))return {lines,plan:false};
  // sharper pass: ~4400 px across an A4/A3 sheet (≈2.5× a 150 dpi scan) so 6-9 px labels become readable; cut into tiles to keep phone memory low
  const T=src.pts?Math.min(5200,Math.max(3000,L*5.2)):Math.min(5200,Math.max(2600,L*(rich?2.5:1))),k2=T/L,cw=src.W*k2,ch=src.H*k2,nx=Math.ceil((cw-OVER)/(TILE-OVER)),ny=Math.ceil((ch-OVER)/(TILE-OVER));
@@ -114,6 +132,15 @@ async function readSource(src,page,always,step){const L=Math.max(src.W,src.H);
  // keep big headings, unit/plot/area labels from the quick look (tiles can cut long titles)
  const dg=t=>(t.match(/\d+/g)||[]).join(',');
  if(hi.length>=lines.length*.6){const keep=lines.filter(l=>LP.floorOf(l.text)||LP.unitIn(l.text)||LP.plotIn(l.text)||/area|plan/i.test(l.text));lines=hi.concat(keep.filter(k=>!hi.some(h=>Math.abs(h.y-k.y)<Math.max(h.h,k.h)&&h.x<k.x+k.w&&k.x<h.x+h.w&&(h.text===k.text||(dg(h.text)&&dg(h.text)===dg(k.text))))));}
+ // tables (unit / area schedules): the sparse reader drops single letters and digits in cells, so re-read the table block as rows
+ if(!cancelReq){const HD=/(carpet|covered|super|saleable|units?\s*\/\s*fl|area\s*\(|\bschedule\b|\bbeds?\b.*\barea)/i;const heads=lines.filter(l=>HD.test(l.text)&&!(l.frame));const done=[];
+  for(const hd of heads.slice(0,4)){if(cancelReq)break;if(done.some(d=>hd.y>=d.y0&&hd.y<=d.y1))continue;const h=Math.max(hd.h,6);let y1=hd.y+h,blk=lines.filter(l=>!l.frame&&l.y>=hd.y-h*3&&l.y<=hd.y+h*1.5);
+   const below=lines.filter(l=>!l.frame&&l.y>hd.y).sort((a,b)=>a.y-b.y);for(const l of below){if(l.y-y1>h*3.2)break;if(HD.test(l.text)&&l.y>hd.y+h*2&&/schedule/i.test(l.text))break;y1=Math.max(y1,l.y+l.h);blk.push(l);}
+   const x0=Math.max(0,Math.min(...blk.map(l=>l.x))-h*2),x1=Math.min(src.W,Math.max(...blk.map(l=>l.x+l.w))+h*2),y0=Math.max(0,Math.min(...blk.map(l=>l.y))-h),yy=Math.min(src.H,y1+h);done.push({y0,y1:yy});
+   step&&step('reading table',.85);const kk=Math.min(src.pts?6:3,Math.max(1,34/h)),w=await ocrWorker();await w.setParameters({tessedit_pageseg_mode:'6'});
+   const c=unline(prep(await src.draw(x0,y0,x1-x0,yy-y0,kk)),215,Math.round(h*kk*2.2));const rl=(await ocr(c,page,{sx:x0,sy:y0,k:kk})).filter(l=>/\w/.test(l.text));free(c);await w.setParameters({tessedit_pageseg_mode:'11'});
+   const dn=a=>a.reduce((s,l)=>s+(l.text.match(/\d+/g)||[]).length,0),inside=lines.filter(l=>!l.frame&&l.y>=y0&&l.y<=yy&&l.x>=x0-1&&l.x<=x1);
+   if(rl.length){rl.forEach(l=>{l.tbl=true;});lines=lines.concat(rl);LAYINFO.push(`page ${page+1}: re-read a table as rows (${dn(rl)} numbers; ${dn(inside)} before)`);}}}
  // close-up re-read under each room name that has no size yet (sizes are usually printed right below the name)
  if(!cancelReq){const pr=LP.parse(lines),bare=pr.rooms.filter(r=>!r.sqft&&r.box).slice(0,40);
   if(bare.length){const w=await ocrWorker();await w.setParameters({tessedit_pageseg_mode:'6'});
@@ -132,13 +159,13 @@ async function readSource(src,page,always,step){const L=Math.max(src.W,src.H);
  return {lines,plan:true};}
 // ---------- progress ----------
 function prog(pct,msg){document.querySelectorAll('.layProg').forEach(p=>{p.hidden=pct==null;p.querySelector('i').style.width=Math.round(pct||0)+'%';p.querySelector('.pmsg').textContent=msg||'';});document.querySelectorAll('.layRead').forEach(b=>b.disabled=pct!=null);}
-let busy=false;
+let busy=false,LAYINFO=[];
 let cancelReq=false;
 let again=false;async function autoRead(){if(!cur)return;if(busy){again=true;cancelReq=true;return;}busy=true;again=false;cancelReq=false;const f=cur,pid=P().id,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
  try{prog(3,'Getting ready…');let base=5,span=85;
   document.querySelectorAll('.layStop').forEach(b=>b.textContent='✋ Stop and use what I have');
   progCb=m=>{if(m.status==='recognizing text')return;else if(/load|initializ/.test(m.status))prog(Math.min(base,4+(m.progress||0)*4),'Loading the text reader (first time only)…');};
-  const t0=Date.now();
+  const t0=Date.now();LAYINFO=[];
   if(isPdf){prog(5,'Opening PDF…');const pdf=await loadPdf(f.blob),N=Math.min(pdf.numPages,40);let plans=0;
    for(let i=1;i<=N&&!cancelReq;i++){base=5+88*(i-1)/N;span=88/N;const lab=`Page ${i} of ${N}`;prog(base,lab+'…');const pg=await pdf.getPage(i),v=pg.getViewport({scale:1}),tc=await pg.getTextContent(),pl=pdfLines(tc.items,v.height,i-1),txt=pl.map(l=>l.text).join(' ');
     let useOcr=txt.replace(/\s/g,'').length<15;if(!useOcr&&!PLANRE.test(txt)){try{const ops=await pg.getOperatorList(),O=pdfjs.OPS;useOcr=ops.fnArray.some(x=>x===O.paintImageXObject||x===O.paintJpegXObject||x===O.paintInlineImageXObject);}catch(_){}}
@@ -146,10 +173,10 @@ let again=false;async function autoRead(){if(!cur)return;if(busy){again=true;can
     if(useOcr){const r=await readSource(pdfSrc(pg),i-1,false,(m,fr)=>prog(base+span*fr,`${lab}: ${m}…`));lines=lines.concat(r.lines);if(r.plan)plans++;}
     else if(PLANRE.test(txt))plans++;
     pg.cleanup&&pg.cleanup();}
-   lines.plans=plans;}
+   lines.plans=plans;lines.pagesN=N;}
   else{prog(5,'Preparing image…');const src=await imgSrc(f.blob);base=5;span=88;const r=await readSource(src,0,true,(m,fr)=>prog(base+span*fr,`Reading: ${m}…`));src.close&&src.close();lines=r.lines;}
   const secs=Math.round((Date.now()-t0)/1000);
-  prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();r.secs=secs;r.stopped=cancelReq;
+  prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();r.secs=secs;r.stopped=cancelReq;r.info=LAYINFO.slice();r.pages=isPdf?lines.pagesN||null:1;
   f.read=r;try{await saveRec(pid,f);}catch(_){}if(cur!==f||P().id!==pid||again){prog(null);return;}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
  catch(e){prog(null);alert('Sorry, I could not read this file: '+(e&&e.message||e)+'\nYou can still enter sizes by hand.');}
  finally{busy=false;progCb=null;idleKill();warm();if(again&&cur&&cur!==f){again=false;setTimeout(autoRead,0);}else again=false;}}
@@ -162,37 +189,54 @@ const inp=(k,v,i,w)=>`<input type="text" inputmode="decimal" autocomplete="off" 
 function plotUnitOf(){const p=P();return p.mode==='highrise'?(p.hr.plotUnit||'sqyd'):p.plotUnit;}
 const UF={sqyd:9,sqft:1};
 function unitSq(u){return u==='marla'?(+S().marlaSqft||225):(UF[u]||1);}
-function review(r){R=JSON.parse(JSON.stringify(r));R.rooms.forEach(x=>x.on=x.sqft!=null&&x.conf>=.4);R.units.forEach(u=>u.on=true);R.wfPct=Math.round((R.wallFactor-1)*100);R.plotOn=!!R.plot;R.useCov=R.covered.length>0;$('#lrev').hidden=false;drawRev();}
+function review(r){R=JSON.parse(JSON.stringify(r));R.floorAreas=R.floorAreas||[];
+ // nothing below ~50% sure is ticked for you: it is listed so you can check and tick it yourself
+ R.rooms.forEach(x=>x.on=x.sqft!=null&&x.conf>=.5);R.rooms.sort((a,b)=>(a.level-b.level)||String(a.floor).localeCompare(String(b.floor)));R.units.forEach(u=>u.on=u.conf>=.5&&+u.sqft>0&&+u.count>0);R.floorAreas.forEach(f=>{f.on=f.conf>=.5&&f.sqft>0;f.use=f.kind||(f.level<0?'parking':f.level===0?(P().mode==='highrise'?'commercial':'residential'):'residential');});if(R.plot)R.plot.conf=R.plot.conf||0;R.wfPct=Math.round((R.wallFactor-1)*100);R.plotOn=!!R.plot&&R.plot.conf>=.6;R.useCov=R.covered.length>0;$('#lrev').hidden=false;drawRev();}
 function closeRev(){$('#lrev').hidden=true;}
 function floorsCalc(){const fs={};R.rooms.forEach(r=>{if(!r.on||!(r.sqft>0))return;const f=fs[r.floor]||(fs[r.floor]={floor:r.floor,level:r.level,kind:r.floorKind,sq:0,shop:0,baths:0,rooms:0});if(!/lawn|terrace|parking/.test(r.type))f.sq+=+r.sqft;if(r.type==='shop')f.shop+=+r.sqft;if(r.type==='bath')f.baths++;if(!/lawn|terrace|corridor|stair|lift|lobby|parking/.test(r.type))f.rooms++;});
  const k=1+(+R.wfPct||0)/100;return Object.values(fs).sort((a,b)=>a.level-b.level).map(f=>Object.assign(f,{cov:Math.round(f.sq*k)}));}
 const blank=v=>v===''||v==null||!(+v>0);const ch=(o,n)=>blank(o)?n:`${o} → ${n}`;
 function proposals(){const p=P(),hr=p.mode==='highrise',out=[],fl=floorsCalc(),pu=plotUnitOf();
  if(R.plot&&R.plotOn){const v=+(R.plot.sqft/unitSq(pu)).toFixed(1),old=hr?p.hr.plotArea:p.plotArea;out.push({id:'plot',t:`Plot area: ${ch(blank(old)?'':n0(old),`<b>${v}</b>`)} ${pu==='sqyd'?'sq yd':pu}`+(R.plot.w?` (${R.plot.w} × ${R.plot.d} ft)`:''),f:()=>{if(hr){p.hr.plotArea=v;if(R.plot.w){p.hr.plotW=R.plot.w;p.hr.plotD=R.plot.d;}}else{if(p.plotPriceMode==='perunit'){}p.plotArea=v;}}});}
- const covList=R.useCov&&R.covered.length?R.covered.map(c=>c.sqft):null;
+ const FA=(R.floorAreas||[]).filter(f=>f.on&&+f.sqft>0),faAbove=[];FA.filter(f=>f.level>=0&&f.use!=='skip').sort((a,b)=>a.level-b.level).forEach(f=>{for(let i=0;i<Math.max(1,+f.count||1);i++)faAbove.push(+f.sqft);});
+ let covList=R.useCov&&R.covered.length?R.covered.map(c=>c.sqft):null;if(!hr&&faAbove.length)covList=faAbove;
  if(!hr){const abv=fl.filter(f=>f.level>=0&&f.level<20),areas=covList&&covList.length>=abv.length?covList:abv.map(f=>f.cov);
   if(areas.length&&areas.some(a=>a>0)){const same=areas.every(a=>Math.abs(a-areas[0])<1);out.push({id:'cov',t:`Floors: ${ch(p.floors,`<b>${areas.length}</b>`)}; covered area per floor: ${same?`${ch(blank(p.bua)?'':n0(p.bua),`<b>${n0(areas[0])}</b>`)} sq ft`:areas.map((a,i)=>`${i?'Floor '+i:'Ground'} <b>${n0(a)}</b>`).join(', ')+' sq ft'}`,f:()=>{p.floors=areas.length;p.bua=areas[0];if(same){p.override=false;}else{p.override=true;p.floorAreas=areas.slice();}}});}
   if(fl.some(f=>f.level<0))out.push({id:'base',t:'Basement found → set <b>Basement</b>',f:()=>{p.extra='basement';}});
   if(abv.length){out.push({id:'items',t:'BOQ counts from rooms: doors '+abv.map(f=>`<b>${f.rooms+(f.level===0?0:0)}</b>`).join(' / ')+', geysers '+abv.map(f=>`<b>${Math.max(f.baths,0)}</b>`).join(' / ')+' (per floor)',f:()=>{p.edits=p.edits||{};abv.forEach((f,i)=>{if(f.rooms){p.edits['f'+i+':door']=Object.assign(p.edits['f'+i+':door']||{},{qty:f.rooms});}if(f.baths){p.edits['f'+i+':pl_gey']=Object.assign(p.edits['f'+i+':pl_gey']||{},{qty:f.baths});}});}});}}
+ else if(FA.length){const h=p.hr,cnt=f=>Math.max(1,+f.count||1),B=FA.filter(f=>f.level<0||(f.use==='parking'&&f.level<0)).sort((a,b)=>b.level-a.level),G=FA.find(f=>f.level===0),C=FA.filter(f=>f.level>=1&&f.use==='commercial'),PK=FA.filter(f=>f.level>=1&&f.use==='parking'),RS=FA.filter(f=>f.level>=1&&f.use==='residential');
+  if(B.length){const n=B.reduce((a,f)=>a+cnt(f),0),ar=[];B.forEach(f=>{for(let i=0;i<cnt(f);i++)ar.push(+f.sqft);});out.push({id:'fbase',t:`Basements: ${ch(h.basements,`<b>${n}</b>`)} (${ar.map(n0).join(', ')} sq ft)`,f:()=>{h.basements=n;h.bAreas=ar;}});}
+  if(G)out.push({id:'ground',t:`Ground floor built area: ${ch(h.groundAuto!==false||blank(h.groundArea)?'':n0(h.groundArea),`<b>${n0(G.sqft)}</b>`)} sq ft`,f:()=>{h.groundAuto=false;h.groundArea=+G.sqft;}});
+  if(PK.length){const n=PK.reduce((a,f)=>a+cnt(f),0);out.push({id:'fpod',t:`Parking floors above ground: ${ch(h.podium,`<b>${n}</b>`)}`,f:()=>{h.podium=n;}});}
+  if(C.length){const ar=[];C.forEach(f=>{for(let i=0;i<cnt(f);i++)ar.push(+f.sqft);});out.push({id:'comm',t:`Commercial floors: ${ch(h.commercial,`<b>${ar.length}</b>`)}, areas ${ar.map(a=>'<b>'+n0(a)+'</b>').join(', ')} sq ft`,f:()=>{h.commercial=ar.length;h.commAuto=false;h.commAreas=ar;}});}
+  if(RS.length){const n=RS.reduce((a,f)=>a+cnt(f),0),pl=RS.reduce((a,f)=>a+cnt(f)*f.sqft,0)/n;out.push({id:'fres',t:`Residential floors: ${ch(h.residential,`<b>${n}</b>`)}, floor plate ${ch(blank(h.plate)?'':n0(h.plate),`<b>${n0(pl)}</b>`)} sq ft`,f:()=>{h.residential=n;h.plate=Math.round(pl);}});}
+  unitsProp(out,h);}
  else{const h=p.hr,g=fl.find(f=>f.level===0);
   if(g&&g.cov>0)out.push({id:'ground',t:`Ground floor built area: ${ch(h.groundAuto!==false||blank(h.groundArea)?'':n0(h.groundArea),`<b>${n0(g.cov)}</b>`)} sq ft`,f:()=>{h.groundAuto=false;h.groundArea=g.cov;}});
   const cf=fl.filter(f=>f.level>=1&&(f.kind==='commercial'||f.shop>=f.sq*.5)&&f.sq>0);
   if(cf.length)out.push({id:'comm',t:`Commercial floors: ${ch(h.commercial,`<b>${cf.length}</b>`)}, areas ${cf.map(f=>'<b>'+n0(f.cov)+'</b>').join(', ')} sq ft`,f:()=>{h.commercial=cf.length;h.commAuto=false;h.commAreas=cf.map(f=>f.cov);}});
-  const us=R.units.filter(u=>u.on&&u.name);if(us.length)out.push({id:'units',t:`Unit mix (${R.mixMode==='merge'?'update/add':'replace'}): `+us.map(u=>`<b>${esc(u.name)}</b> ${n0(u.sqft)} sq ft × ${u.count}/floor`).join(', '),f:()=>{const nu=us.map(u=>{const d=H.UNIT_TYPES.find(t=>+t.beds===+u.beds&&!t.top)||H.UNIT_TYPES[2];return {name:u.name,beds:+u.beds||0,size:+u.sqft||d.size,perFloor:+u.count||1,park:d.park!=null?d.park:1,top:!!u.top};});
-   if(R.mixMode==='merge'){nu.forEach(n=>{const e=h.units.find(x=>x.name.toLowerCase()===n.name.toLowerCase());if(e)Object.assign(e,n);else h.units.push(n);});}else h.units=nu;}});}
+  unitsProp(out,h);}
  return out;}
+function unitsProp(out,h){{const us=R.units.filter(u=>u.on&&u.name&&+u.sqft>0&&+u.count>0);if(us.length)out.push({id:'units',t:`Unit mix (${R.mixMode==='merge'?'update/add':'replace'}): `+us.map(u=>`<b>${esc(u.name)}</b> ${n0(u.sqft)} sq ft × ${u.count}/floor`).join(', '),f:()=>{const nu=us.map(u=>{const d=H.UNIT_TYPES.find(t=>+t.beds===+u.beds&&!t.top)||H.UNIT_TYPES[2];return {name:u.name,beds:+u.beds||0,size:+u.sqft||d.size,perFloor:+u.count||1,park:d.park!=null?d.park:1,top:!!u.top};});
+   if(R.mixMode==='merge'){nu.forEach(n=>{const e=h.units.find(x=>x.name.toLowerCase()===n.name.toLowerCase());if(e)Object.assign(e,n);else h.units.push(n);});}else h.units=nu;}});}}
 function drawRev(){const r=R,hr=P().mode==='highrise',pu=plotUnitOf();let x='';
  if(r.little)x+=`<div class="warn friendly">🙈 I couldn't read much from this layout. That's normal for hand sketches, blurry photos or drawings with tiny text.<br>Tips: take the photo straight on in good light, crop to one floor, or upload the architect's PDF. You can also type the sizes below or in the Estimate tab.</div>`;
  x+=`<p class="sub">Nothing changes until you press <b>Apply selected</b>. Untick anything that looks wrong and fix numbers right here.</p>`;
  x+=`<h3>🗺️ Plot</h3>`+(r.plot?`<label class="chk"><input type="checkbox" data-k="plotOn" ${r.plotOn?'checked':''}> Plot ${r.plot.w?`${r.plot.w} × ${r.plot.d} ft = `:''}${inp('plotSqft',r.plot.sqft,null,90)} sq ft (= ${(r.plot.sqft/unitSq(pu)).toFixed(1)} ${pu==='sqyd'?'sq yd':pu}) ${badge(r.plot.conf)}</label><p class="sub">Read as “${esc(r.plot.raw)}”</p>`:'<p class="sub">No plot size found (look for text like “Plot 30\' × 60\'” or “200 sq yd”).</p>');
- x+=`<h3>🛏️ Rooms (${r.rooms.length})</h3>`;
- if(r.rooms.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Room</th><th>W ft</th><th>L ft</th><th>Area sq ft</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.rooms.map((m,i)=>`<tr class="${m.on?'':'off'}"><td><input type="checkbox" data-k="on" data-i="${i}" ${m.on?'checked':''} aria-label="Use ${esc(m.name)}"></td><td><input data-k="name" data-i="${i}" value="${esc(m.name)}" style="width:110px"></td><td data-l="W ft">${inp('w',m.w,i,56)}</td><td data-l="L ft">${inp('d',m.d,i,56)}</td><td data-l="Area sq ft">${inp('sqft',m.sqft,i,70)}</td><td data-l="Floor"><input data-k="floor" data-i="${i}" value="${esc(m.floor)}" style="width:100px"></td><td>${badge(m.conf)}${m.metric?' <small>m→ft</small>':''}</td></tr>`).join('')+'</tbody></table></div>';}
+ const nOn=r.rooms.filter(m=>m.on).length;x+=`<p class="sub readInfo">📄 ${r.pages>1?r.pages+' pages read one by one':'1 page read'}${r.secs!=null?` in ${r.secs}s`:''}${(r.info||[]).length?' · '+esc(r.info.join(' · ')):''}${r.stopped?' · <b>stopped early</b>':''}</p>`;
+ const lowN=r.rooms.filter(m=>m.sqft!=null&&m.conf<.5).length+r.units.filter(u=>u.conf<.5).length+r.floorAreas.filter(f=>f.conf<.5).length;
+ if(lowN)x+=`<div class="warn">⚠️ ${lowN} value${lowN>1?'s':''} I'm not sure about ${lowN>1?'are':'is'} <b>not ticked</b>. Check ${lowN>1?'them':'it'} against your drawing, fix the number and tick ${lowN>1?'them':'it'} if right.</div>`;
+ x+=`<h3>🏢 Floors found (${r.floorAreas.length})</h3>`;
+ if(r.floorAreas.length){x+='<div class="rtWrap"><table class="rt fa"><thead><tr><th></th><th>Floor</th><th>How many</th><th>Area each, sq ft</th><th>Use</th><th>Sure?</th></tr></thead><tbody>'+r.floorAreas.map((f,i)=>`<tr class="${f.on?'':'off'}" title="${esc(f.raw||'')}"><td><input type="checkbox" data-k="fon" data-i="${i}" ${f.on?'checked':''} aria-label="Use ${esc(f.floor)}"></td><td><input data-k="fname" data-i="${i}" value="${esc(f.floor)}" style="width:120px"><small class="rawsrc">“${esc((f.raw||'').slice(0,60))}”</small></td><td data-l="How many">${inp('fcount',f.count,i,44)}</td><td data-l="Area each, sq ft">${inp('fsqft',f.sqft,i,80)}</td><td data-l="Use"><select data-k="fuse" data-i="${i}">${[['parking','Parking'],['commercial','Shops / commercial'],['residential','Apartments / residential'],['skip','Other (ignore)']].map(([v,l])=>`<option value="${v}" ${f.use===v?'selected':''}>${l}</option>`).join('')}</select></td><td>${badge(f.conf)}</td></tr>`).join('')+'</tbody></table></div>';}
+ else x+='<p class="sub">No floor area table / area statement found (e.g. “Ground floor covered area = 1,650 sft”).</p>';
+ x+=`<h3>🛏️ Rooms (${r.rooms.length}${r.rooms.length?`, ${nOn} ticked`:''})</h3>`;
+ if(r.rooms.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Room</th><th>W ft</th><th>L ft</th><th>Area sq ft</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.rooms.map((m,i)=>(i===0||r.rooms[i-1].floor!==m.floor?`<tr class="grp"><td></td><td colspan="6">📍 ${esc(m.floor)} · ${r.rooms.filter(q=>q.floor===m.floor).length} rooms</td></tr>`:'')+`<tr class="${m.on?'':'off'}${m.sqft!=null&&m.conf<.5?' lowc':''}"><td><input type="checkbox" data-k="on" data-i="${i}" ${m.on?'checked':''} aria-label="Use ${esc(m.name)}"></td><td><input data-k="name" data-i="${i}" value="${esc(m.name)}" style="width:110px"></td><td data-l="W ft">${inp('w',m.w,i,56)}</td><td data-l="L ft">${inp('d',m.d,i,56)}</td><td data-l="Area sq ft">${inp('sqft',m.sqft,i,70)}</td><td data-l="Floor"><input data-k="floor" data-i="${i}" value="${esc(m.floor)}" style="width:100px"></td><td>${badge(m.conf)}${m.metric?' <small>m→ft</small>':''}</td></tr>`).join('')+'</tbody></table></div>';}
  else x+='<p class="sub">No room labels found.</p>';
  const fl=floorsCalc();
  if(fl.length)x+=`<label class="wfp">Walls &amp; passages add ${inp('wfPct',r.wfPct,null,50)} % to room areas</label><table class="rt sumf"><tr><th>Floor</th><th>Rooms total</th><th>≈ Covered area</th><th>Baths</th></tr>`+fl.map(f=>`<tr><td>${esc(f.floor)}</td><td>${n0(f.sq)} sq ft</td><td><b>${n0(f.cov)} sq ft</b></td><td>${f.baths}</td></tr>`).join('')+'</table>';
  if(r.covered.length)x+=`<label class="chk"><input type="checkbox" data-k="useCov" ${r.useCov?'checked':''}> Use the covered area printed on the drawing: ${r.covered.map(c=>`<b>${n0(c.sqft)}</b> sq ft ${badge(c.conf)}`).join(', ')}</label>`;
  x+=`<h3>🏢 Unit types (${r.units.length})</h3>`;
- if(r.units.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Unit</th><th>Beds</th><th>Size sq ft</th><th>Per floor</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.units.map((u,i)=>`<tr class="${u.on?'':'off'}"><td><input type="checkbox" data-k="uon" data-i="${i}" ${u.on?'checked':''}></td><td><input data-k="uname" data-i="${i}" value="${esc(u.name)}" style="width:120px"></td><td data-l="Beds">${inp('ubeds',u.beds,i,40)}</td><td data-l="Size sq ft">${inp('usqft',u.sqft,i,70)}</td><td data-l="Per floor">${inp('ucount',u.count,i,44)}</td><td data-l="Floor">${esc(u.floor)}</td><td>${badge(u.conf)}${u.fromRooms?' <small>from rooms</small>':''}</td></tr>`).join('')+'</tbody></table></div>';
+ if(r.units.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Unit</th><th>Beds</th><th>Size sq ft</th><th>Per floor</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.units.map((u,i)=>`<tr class="${u.on?'':'off'}"><td><input type="checkbox" data-k="uon" data-i="${i}" ${u.on?'checked':''}></td><td><input data-k="uname" data-i="${i}" value="${esc(u.name)}" style="width:120px"></td><td data-l="Beds">${inp('ubeds',u.beds,i,40)}</td><td data-l="Size sq ft">${inp('usqft',u.sqft,i,70)}</td><td data-l="Per floor">${inp('ucount',u.count,i,44)}${!(+u.count>0)?'<small class="need">fill in</small>':''}</td><td data-l="Floor">${esc(u.floor)}</td><td>${badge(u.conf)}${u.fromRooms?' <small>from rooms</small>':''}${u.areas&&Object.keys(u.areas).filter(k=>u.areas[k]).length>1?`<br><small>${Object.keys(u.areas).filter(k=>u.areas[k]).map(k=>k+' '+n0(u.areas[k])).join(' · ')}</small>`:''}</td></tr>`).join('')+'</tbody></table></div>';
   if(hr)x+=`<div class="chips small"><button data-mix="replace" class="${R.mixMode!=='merge'?'on':''}">Replace unit mix</button><button data-mix="merge" class="${R.mixMode==='merge'?'on':''}">Update / add to mix</button></div>`;}
  else x+=`<p class="sub">No flat/unit labels found${hr?' (e.g. “2 BED”, “3BHK”, “Type A”)':''}.</p>`;
  const pr=proposals();x+=`<h3>✅ Apply to this ${hr?'high-rise':'house'} project</h3>`+(pr.length?'<div class="props">'+pr.map(q=>`<label class="chk"><input type="checkbox" data-prop="${q.id}" ${R['no_'+q.id]?'':'checked'}> <span>${q.t}</span></label>`).join('')+'</div>':'<p class="sub">Nothing to apply yet – tick or fill in some rows above.</p>');
@@ -204,6 +248,7 @@ $('#lrevBody').addEventListener('change',e=>{const t=e.target,k=t.dataset.k,i=t.
  if(k==='on')rm.on=t.checked;else if(k==='name')rm.name=t.value;else if(k==='floor'){rm.floor=t.value;const f=LP.floorOf(t.value+(/floor/i.test(t.value)?'':' floor'));if(f)rm.level=f.level;}
  else if(k==='w'||k==='d'){rm[k]=num(t.value)||null;if(rm.w&&rm.d)rm.sqft=+(rm.w*rm.d).toFixed(1);}else if(k==='sqft')rm.sqft=num(t.value)||null;
  else if(k==='uon')u.on=t.checked;else if(k==='uname')u.name=t.value;else if(k==='ubeds')u.beds=num(t.value);else if(k==='usqft')u.sqft=num(t.value);else if(k==='ucount')u.count=num(t.value);
+ else if(k==='fon')R.floorAreas[i].on=t.checked;else if(k==='fname'){const f=R.floorAreas[i];f.floor=t.value;const g=LP.floorOf(/floor|level|basement/i.test(t.value)?t.value:t.value+' floor');if(g){f.level=g.level;if(g.count)f.count=g.count;}}else if(k==='fcount')R.floorAreas[i].count=num(t.value)||1;else if(k==='fsqft')R.floorAreas[i].sqft=num(t.value)||null;else if(k==='fuse')R.floorAreas[i].use=t.value;
  else if(k==='plotOn')R.plotOn=t.checked;else if(k==='plotSqft')R.plot.sqft=num(t.value);else if(k==='wfPct')R.wfPct=num(t.value);else if(k==='useCov')R.useCov=t.checked;drawRev();});
 $('#lrevBody').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.mix){R.mixMode=b.dataset.mix;drawRev();}
  else if(b.id==='lrevCancel')closeRev();else if(b.id==='lrevApply'){const pr=proposals().filter(q=>!R['no_'+q.id]);if(!pr.length){alert('Nothing selected.');return;}
