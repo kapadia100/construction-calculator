@@ -186,3 +186,4 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
  body.printReport .rpHead,body.printReport .rpT th,body.printReport .rpTotal,body.printReport .rpT tr.tot td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 @media print{body.printReport #boq,body.printReport #estimate,body.printReport #drawings{display:none!important}}
 @media(max-width:760px){html{scroll-padding-bottom:150px;scroll-padding-top:12px}}
+.qbs{display:contents}

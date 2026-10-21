@@ -37,7 +37,7 @@ function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.pl
  const plate=+h.plate>0?+h.plate:autoPlate;
  return{plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
 // "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
-function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/,/g,'').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
+function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/[\u00a0\u2009\u202f]/g,' ').replace(/(\d),(\d{3})(?!\d)/g,'$1$2').replace(/(\d),(\d{1,2})(?!\d)/g,'$1.$2').replace(/,/g,'').replace(/[–—−]/g,'-').replace(/[‘`´]/g,"'").replace(/[“]/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
  if(/-\s*\d+\s*(x|×|\*|by)|^-/.test(t.replace(/'\s*-\s*\d/g,"'"))&&/^-|[x×*]\s*-/.test(t))return null;
  const side=x=>{x=x.trim().replace(/\s*(ft|feet)\b/g,"'").replace(/\s*(in|inch|inches)\b/g,'"');const m=x.match(/^(\d*\.?\d+)\s*'?\s*(?:-?\s*(\d*\.?\d+)\s*"?)?$/);if(!m)return NaN;const ft=+m[1],inch=m[2]!=null?+m[2]:0;if(m[2]!=null&&!/'/.test(x)&&!/"/.test(x))return NaN;if(inch>=12)return NaN;return ft+inch/12;};
  const parts=t.split(/\s*(?:x|×|\*|by)\s*/);let r=null;
@@ -46,7 +46,11 @@ function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/,/g,'').r
  if(r&&r.area>5e6)return null;return r;}
 const dimA=v=>{const d=parseDim(v);return d?d.area:0;};
 // shop sizes: typed list "300, 450" or auto split of the sellable ground area
-function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=String(h.shopList||'').split(/[,;\s]+/).map(Number).filter(x=>x>0);
+// "300, 450", "300 sq ft; 450 sqft", "1,200, 1,500", one per line, "300,450"
+function parseList(v){const t=String(v==null?'':v).toLowerCase().replace(/[\u00a0]/g,' ').replace(/sq\.?\s*(ft|feet)|sft|square feet|ft/g,' ');const out=[];
+ t.split(/[;\n\/+&]|,\s+|\s+|\band\b/).forEach(tok=>{tok=tok.trim();if(!tok)return;let parts=[tok];const th=tok.replace(/,/g,'');if(/,/.test(tok)&&!(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(tok)&&+th<=100000))parts=tok.split(',');
+  parts.forEach(x=>{x=x.replace(/,/g,'');if(/^\d*\.?\d+$/.test(x)&&+x>0)out.push(+x);});});return out;}
+function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=parseList(h.shopList);
  if(list.length)return list;if(!n||!g)return [];const eff=(+h.commEff||75)/100;return Array.from({length:n},()=>Math.round(g*eff/n));}
 function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  if(h.uSizeAuto&&(h.units||[]).length===1&&+h.units[0].perFloor>0){const pl0=geom(h).plate;h=Object.assign({},h,{units:[Object.assign({},h.units[0],{size:Math.round(pl0*(1-(+h.corePct||0)/100)/(+h.units[0].perFloor))})]});}const g=geom(h),w=[],plate=g.plate;
@@ -83,7 +87,7 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  const parkArea=floors.filter(f=>f.type==='basement'||f.type==='parking').reduce((a,f)=>a+f.area,0),provided=Math.floor(parkArea*h.parkEff/100/(h.carArea||350));
  if(provided<required)w.push(`Parking short: ${required} spaces required, ${provided} provided. Add basement/podium floors or reduce units.`);
  const construction=floors.reduce((a,f)=>a+f.cost,0);
- const lifts=totalFloors>0?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
+ const lifts=above>0?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
  const ex={lifts:lifts*(R.liftCost+R.liftPerStop*stops),fire:gross*R.fire,security:gross*R.security,generator:(totalUnits*R.kvaPerUnit+commGross*R.kvaPerCommSqft)*R.kvaRate,water:totalUnits*R.waterPerUnit};
  const extras=Object.values(ex).reduce((a,b)=>a+b,0),hard=construction+extras;
  const margin=hard*R.margin/100,contingency=hard*R.contingency/100,design=hard*R.designPct/100+R.approvals,tax=(hard+margin)*R.tax/100;
@@ -173,6 +177,6 @@ function quickSet(h,k,v){if(!(+h.qTotal>0))h.qTotal=quick(h).total;
  else if(k==='total')h.qTotal=v===''?0:Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=v===''?'':Math.max(0,+v|0);else{h[k]=v;return quick(h);}
  if(k==='groundUse'){if(v==='parking'){if(!(+h.podium>0))h.podium=1;}else if(v&&!(+h.commercial>0))h.commercial=1;}
  const q=quick(h);const any=+h.qTotal>0||['basements','podium','commercial'].some(x=>h[x]!==''&&h[x]!=null);h.residential=any?q.residential:'';return q;}
-const api={parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
+const api={parseList,parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
 if(typeof module!=='undefined')module.exports=api;else root.HR=api;
 })(this);
