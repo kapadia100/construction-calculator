@@ -1,0 +1,62 @@
+// Feasibility report: one data model -> HTML (print) and a real PDF (jsPDF, bundled in vendor/).
+(function(){const $=s=>document.querySelector(s),C=window.Calc,H=window.HR,A=()=>window.__app;
+const n0=x=>Math.round(+x||0).toLocaleString('en-US'),pk=x=>C.pkr(x),wd=x=>C.words(x);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function today(){const d=new Date();return d.toISOString().slice(0,10);}
+function data(){const a=A(),p=a.P(),s=a.S(),title=window.__title(),e=C.estimate(p,s),hr=p.mode==='highrise',R={title,date:new Date().toLocaleDateString('en-GB'),mode:hr?'Building (high-rise)':'House',sections:[],drawings:[]};
+ const sec=(t,cols,rows,note)=>R.sections.push({t,cols,rows:rows.filter(Boolean),note});
+ if(hr){const h=p.hr,pu=h.plotUnit==='sqft'?'sq ft':'sq yd';
+  sec('Project inputs',['Item','Value'],[['Plot',title],['Plot size',`${n0(h.plotArea)} ${pu} (${n0(e.g.plotSqft)} sq ft)`],['Plot price',h.plotPriceMode==='perunit'?`${pk(h.plotPrice)} per ${pu}`:pk(h.plotPrice)],['Floors',`${e.nB} basement, ${e.nP} parking, ${e.nC} commercial, ${e.nR} residential (${e.totalFloors} levels)`],['Typical floor plate',n0(e.plate)+' sq ft']]);
+  const fl=e.floors.slice().sort((x,y)=>y.lvl-x.lvl);
+  sec('Floor-by-floor stack (top to bottom)',['Level','Use','Area sq ft','Cost'],fl.map(f=>[f.label,f.type==='commercial'&&f.lvl===0?'shops':f.type,n0(f.area),pk(f.cost)]));
+  const sh=H.shopSizes(h);if(sh.length)sec('Ground floor shops',['Shop','Size sq ft'],sh.map((x,i)=>['Shop '+(i+1),n0(x)]).concat([['Total',n0(sh.reduce((a,b)=>a+b,0))]]));
+  sec('Residential units',['Type','Per floor','Floors','Size sq ft','Units'],e.unitRows.filter(u=>u.count>0).map(u=>[u.name,u.perFloor,u.floors,n0(u.size),u.count]).concat([['Total','','','',e.totalUnits]]));
+  sec('Areas',['Item','sq ft'],[['Gross built-up',n0(e.gross)],['Sellable (residential + commercial)',n0(e.sellable)],['Residential sellable',n0(e.resSell)],['Commercial sellable',n0(e.commSell)],['Efficiency',e.efficiency.toFixed(1)+' %'],['Parking spaces required / provided',`${e.required} / ${e.provided}`]]);
+  sec('Cost breakdown',['Item','Amount'],[...e.floors.reduce((m,f)=>{const k=f.type==='commercial'&&f.lvl===0?'shops':f.type;m.set(k,(m.get(k)||0)+f.cost);return m;},new Map())].map(([k,v])=>['Structure & finishes – '+k,pk(v)]).concat([['Lifts',pk(e.ex.lifts)],['Fire fighting',pk(e.ex.fire)],['CCTV & security',pk(e.ex.security)],['Generator',pk(e.ex.generator)],['Water tanks & pumps',pk(e.ex.water)],['Hard cost',pk(e.hard)],['Contractor margin',pk(e.margin)],['Contingency',pk(e.contingency)],['Design, engineering & approvals',pk(e.design)],['Tax',pk(e.tax)],['Building total',pk(e.buildTotal)],['Plot cost',pk(e.plot)],['GRAND TOTAL',pk(e.grand)+' ('+wd(e.grand)+')'],['Cost per gross sq ft',e.gross?pk(e.buildTotal/e.gross):'-'],['Cost per sellable sq ft',pk(e.perSellable)],['Cost per unit',e.totalUnits?pk(e.perUnit):'-']]));
+  if(e.revenue)sec('Revenue & profit',['Item','Amount'],[['Residential revenue',pk(e.resSell*(+h.sellRes||0))],['Commercial revenue',pk(e.commSell*(+h.sellComm||0))],['Total revenue',pk(e.revenue)],['Profit',pk(e.profit)],['Margin',e.marginPct.toFixed(1)+' %']]);
+  R.drawings=[['Building section',H.sectionSVG(e,title)],['Typical floor plan',H.floorPlanSVG(e,h,false)]];if(e.hasTop)R.drawings.push(['Penthouse floor plan',H.floorPlanSVG(e,h,true)]);}
+ else{const pu={sqyd:'sq yd',sqft:'sq ft',marla:'marla'}[p.plotUnit]||p.plotUnit;
+  sec('Project inputs',['Item','Value'],[['Plot',title],['Plot size',`${p.plotArea||0} ${pu} (${n0(e.plotSqft)} sq ft)`],['Plot price',p.plotPriceMode==='perunit'?`${pk(p.plotPrice)} per ${pu}`:pk(p.plotPrice)],['Floors',String(p.floors||0)],['Covered area per floor',n0(p.bua)+' sq ft'],['Quality',p.quality+' category'],['Scope',p.scope==='grey'?'Grey structure only':'Complete (grey + finishing)']]);
+  sec('Floor-by-floor',['Floor','Area sq ft','Rate / sq ft','Cost'],e.floors.map(f=>[f.name,n0(f.area),pk(f.rate),pk(f.area*f.rate)]));
+  sec('Cost breakdown',['Item','Amount'],[['Total covered area',n0(e.totalArea)+' sq ft'],['Grey structure',pk(e.grey)],['Finishing',pk(e.finish)],['Construction',pk(e.construction)],['Contractor margin',pk(e.margin)],['Contingency',pk(e.contingency)],['Design & approval',pk(e.design)],['Tax',pk(e.tax)],['Building total',pk(e.buildTotal)],['Plot cost',pk(e.plot)],['GRAND TOTAL',pk(e.grand)+' ('+wd(e.grand)+')'],['Cost per covered sq ft',pk(e.perSqft)]]);}
+ const sc=C.schedule(e.buildTotal,s);sec('Payment schedule',['Stage','%','Weeks','Amount'],sc.map(x=>[x.name,x.pct+'%',x.weeks,pk(x.amount)]).concat([['Total',sc.reduce((a,b)=>a+(+b.pct||0),0)+'%',sc.reduce((a,b)=>a+(+b.weeks||0),0),pk(sc.reduce((a,b)=>a+b.amount,0))]]));
+ const T=C.totals(C.boq(p,s));sec('Key BOQ totals',['Item','Amount'],[['Grey structure',pk(T.grey)],['Finishing',pk(T.finish)],['Materials',pk(T.mat)],['Labour',pk(T.lab)],['Items / fixtures',pk(T.item)],['BOQ total',pk(T.total)]].concat(Object.entries(T.byStage||{}).slice(0,14).map(([k,v])=>['  '+k,pk(v)])));
+ if(e.warnings&&e.warnings.length)R.notes=e.warnings;R.e=e;return R;}
+function html(R){return `<div class="rpHead"><div><h1>Feasibility report</h1><p><b>${esc(R.title)}</b> · ${esc(R.mode)}</p></div><div class="rpDate">${esc(R.date)}<br><small>Construction Calculator · sample rates, check locally</small></div></div>
+ <div class="rpTotal"><span>Grand total</span><b>${pk(R.e.grand)}</b><small>${wd(R.e.grand)} incl. plot</small></div>`+
+ R.sections.map(s=>`<section class="rpSec"><h2>${esc(s.t)}</h2><table class="rpT"><thead><tr>${s.cols.map((c,i)=>`<th${i?' class="n"':''}>${esc(c)}</th>`).join('')}</tr></thead><tbody>${s.rows.map(r=>`<tr${/^(GRAND|Total|Building total)/.test(r[0])?' class="tot"':''}>${r.map((c,i)=>`<td${i?' class="n"':''}>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></section>`).join('')+
+ (R.notes?`<section class="rpSec"><h2>Notes</h2><ul>${R.notes.map(w=>`<li>${esc(w)}</li>`).join('')}</ul></section>`:'')+
+ R.drawings.map(([t,svg])=>`<section class="rpSec rpDraw"><h2>${esc(t)}</h2><div class="svgBox">${svg}</div></section>`).join('')+`<p class="rpFoot">All rates are editable sample values, not guaranteed market prices.</p>`;}
+function render(){const b=$('#reportBody');if(!b)return;const empty=window.__isEmpty&&window.__isEmpty();b.innerHTML=empty?'':html(data());}
+// ---- PDF ----
+let jsLoad=null;function loadJS(){if(window.jspdf)return Promise.resolve();return jsLoad=jsLoad||new Promise((res,rej)=>{const s=document.createElement('script');s.src='vendor/jspdf/jspdf.umd.min.js';s.onload=res;s.onerror=()=>{jsLoad=null;rej(new Error('PDF library failed to load (are you offline on first use?)'));};document.head.appendChild(s);});}
+const asc=t=>String(t==null?'':t).replace(/[–—]/g,'-').replace(/×/g,'x').replace(/·/g,'-').replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[^\x20-\x7E]/g,'').replace(/\s+/g,' ').trim();
+function svgPng(svg,maxW){return new Promise(res=>{const m=svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/),w=m?+m[1]:600,h=m?+m[2]:400,k=Math.min(2,1600/w);const img=new Image();img.onload=()=>{const c=document.createElement('canvas');c.width=Math.round(w*k);c.height=Math.round(h*k);const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);res({url:c.toDataURL('image/png'),w,h});};img.onerror=()=>res(null);img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.includes('xmlns=')?svg:svg.replace('<svg','<svg xmlns="http://www.w3.org/2000/svg"'));});}
+async function pdf(){await loadJS();const R=data(),{jsPDF}=window.jspdf,d=new jsPDF({unit:'mm',format:'a4'}),W=210,M=14,CW=W-2*M;let y=M;
+ const NAVY=[30,58,95],AMB=[245,158,11],GREY=[71,85,105];
+ const foot=()=>{const n=d.getNumberOfPages();for(let i=1;i<=n;i++){d.setPage(i);d.setFontSize(8);d.setTextColor(...GREY);d.text(asc(R.title)+' - Feasibility report - '+R.date,M,290);d.text('Page '+i+' of '+n,W-M,290,{align:'right'});}};
+ const need=h=>{if(y+h>280){d.addPage();y=M;}};
+ d.setFillColor(...NAVY);d.rect(0,0,W,30,'F');d.setTextColor(255,255,255);d.setFont('helvetica','bold');d.setFontSize(18);d.text('Feasibility report',M,13);d.setFontSize(11);d.setFont('helvetica','normal');d.text(asc(R.title)+' - '+R.mode,M,21);d.text(R.date,W-M,13,{align:'right'});y=38;
+ d.setFillColor(255,247,230);d.setDrawColor(...AMB);d.roundedRect(M,y,CW,16,2,2,'FD');d.setTextColor(...NAVY);d.setFont('helvetica','bold');d.setFontSize(10);d.text('GRAND TOTAL',M+4,y+6.5);d.setFontSize(15);d.text(asc(pk(R.e.grand)),M+4,y+13);d.setFont('helvetica','normal');d.setFontSize(10);d.text(asc(wd(R.e.grand))+' incl. plot',W-M-4,y+13,{align:'right'});y+=24;
+ for(const s of R.sections){need(18);d.setFont('helvetica','bold');d.setFontSize(12);d.setTextColor(...NAVY);d.text(asc(s.t),M,y);y+=2;d.setDrawColor(...AMB);d.setLineWidth(.6);d.line(M,y,M+CW,y);y+=5;
+  const nc=s.cols.length,first=nc===2?CW*.62:CW*.4,cw=[first,...Array(nc-1).fill((CW-first)/(nc-1))],xs=cw.map((_,i)=>M+cw.slice(0,i).reduce((a,b)=>a+b,0));
+  const row=(r,head,tot)=>{d.setFont('helvetica',head||tot?'bold':'normal');d.setFontSize(9);const lines=r.map((c,i)=>d.splitTextToSize(asc(c),cw[i]-2));const hgt=Math.max(...lines.map(l=>l.length))*4+2;need(hgt);
+   if(head){d.setFillColor(230,237,246);d.rect(M,y-3.5,CW,hgt,'F');}else if(tot){d.setFillColor(255,247,230);d.rect(M,y-3.5,CW,hgt,'F');}
+   d.setTextColor(head?30:30,head?58:41,head?95:59);lines.forEach((l,i)=>i?d.text(l,xs[i]+cw[i]-1,y,{align:'right'}):d.text(l,xs[i]+1,y));y+=hgt;d.setDrawColor(226,232,240);d.setLineWidth(.2);d.line(M,y-3.5,M+CW,y-3.5);};
+  row(s.cols,true);s.rows.forEach(r=>row(r,false,/^(GRAND|Total|Building total)/.test(r[0])));y+=5;}
+ if(R.notes){need(14);d.setFont('helvetica','bold');d.setFontSize(12);d.setTextColor(...NAVY);d.text('Notes',M,y);y+=6;d.setFont('helvetica','normal');d.setFontSize(9);d.setTextColor(155,28,28);R.notes.forEach(w=>{const l=d.splitTextToSize('- '+asc(w),CW);need(l.length*4+1);d.text(l,M,y);y+=l.length*4+1;});y+=4;}
+ for(const [t,svg] of R.drawings){const im=await svgPng(svg);if(!im)continue;let w=CW,h=w*im.h/im.w;if(h>230){h=230;w=h*im.w/im.h;}need(h+12);d.setFont('helvetica','bold');d.setFontSize(12);d.setTextColor(...NAVY);d.text(asc(t),M,y);y+=4;d.addImage(im.url,'PNG',M,y,w,h);y+=h+8;}
+ d.setFont('helvetica','italic');d.setFontSize(8);d.setTextColor(...GREY);need(8);d.text('All rates are editable sample values, not guaranteed market prices. Check local rates before deciding.',M,y);foot();
+ const P0=A().P(),name=('Feasibility-'+(asc(String(P0.plotNo||'').trim()||P0.name||'project'))+'-'+today()+'.pdf').replace(/[\\/:*?"<>|\s]+/g,'-').replace(/-+/g,'-');
+ const blob=d.output('blob');window.__lastPdf={name,size:blob.size,pages:d.getNumberOfPages()};
+ const f=new File([blob],name,{type:'application/pdf'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},4000);return {name,pages:d.getNumberOfPages(),file:f};}
+function busy(b,on){if(!b)return;b.disabled=on;b.dataset.t=b.dataset.t||b.textContent;b.textContent=on?'⏳ Making PDF…':b.dataset.t;}
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-rp]');if(!b)return;
+ if(window.__isEmpty&&window.__isEmpty()){alert('Enter your plot and floors first – the report needs some numbers.');return;}
+ if(b.dataset.rp==='print'){render();document.body.classList.add('printReport');window.print();setTimeout(()=>document.body.classList.remove('printReport'),800);}
+ else if(b.dataset.rp==='pdf'){busy(b,true);try{await pdf();}catch(x){alert('Could not make the PDF: '+(x&&x.message||x));}finally{busy(b,false);}}
+ else if(b.dataset.rp==='open'){document.querySelector('nav [data-tab=report]').click();}});
+window.REPORT={render,data,pdf};
+})();
+setTimeout(()=>{try{if(navigator.onLine&&location.protocol.startsWith('http')&&'serviceWorker' in navigator)fetch('vendor/jspdf/jspdf.umd.min.js').catch(()=>{});}catch(e){}},8000);

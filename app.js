@@ -127,7 +127,7 @@ $('#resetS').onclick=()=>{if(confirm('Reset ALL settings to sample defaults?')){
 // ---------- backup ----------
 $('#expJ').onclick=()=>dl(APP.replace(/\s+/g,'-').toLowerCase()+'-backup.json',JSON.stringify(st,null,1),'application/json');
 $('#impJ').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d.settings||!Array.isArray(d.projects)||!d.projects.length)throw 0;d.projects.forEach(p=>{p.edits=p.edits||{};p.custom=p.custom||[];p.floorAreas=p.floorAreas||[];});st=d;if(!st.projects.some(p=>p.id===st.cur))st.cur=st.projects[0].id;save();loadInputs();renderAll();$('#impMsg').textContent='✅ Imported '+d.projects.length+' project(s).';}catch(x){$('#impMsg').textContent='❌ That file is not a valid GharGanit backup.';}e.target.value='';};r.readAsText(f);};
-function renderAll(){renderProjSel();if(window.LAY)LAY.refresh();const tab=document.querySelector('.tab.on').id;renderEstimate();if(tab==='boq')renderBOQ();if(tab==='drawings')renderDrawings();if(tab==='schedule')renderSchedule();if(tab==='settings')renderSettings();}
+function renderAll(){renderProjSel();if(window.LAY)LAY.refresh();const tab=document.querySelector('.tab.on').id;renderEstimate();if(tab==='boq')renderBOQ();if(tab==='drawings')renderDrawings();if(tab==='schedule')renderSchedule();if(tab==='settings')renderSettings();if(tab==='report'&&window.REPORT)REPORT.render();}
 // ---------- High-rise mode ----------
 const H=window.HR;
 function ensureHR(p){if(!p.hr)p.hr=C.clone(H.EMPTY_HR);for(const k in H.DEFAULT_HR)if(p.hr[k]==null)p.hr[k]=C.clone(H.DEFAULT_HR[k]);}
@@ -206,7 +206,7 @@ function syncQuick(){const p=P();if(qKey!==qk(p)){const ae=document.activeElemen
   s=stackSummary(p,e);}
  else{F.forEach(k=>set($(`#quick [data-qa=${k}]`),p[k]));
   s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills"><div class="pill">Covered area<b>${n0(e.totalArea)} sq ft</b></div><div class="pill">Building<b>${C.words(e.buildTotal)}</b><small>${fmt(e.perSqft)} / sq ft</small></div><div class="pill">Plot<b>${C.words(e.plot)}</b></div></div>`;}
- $('#qSum').innerHTML=s;}
+ $('#qSum').innerHTML=s+'<div class="rpBtns"><b>📑 Feasibility report</b><button data-rp="print" class="mini">🖨️ Print</button><button data-rp="pdf" class="mini accent">📄 Save as PDF</button><button data-rp="open" class="mini">View</button></div>';}
 $('#quick').addEventListener('input',ev=>{const t=ev.target,p=P(),d=t.dataset,v=t.tagName==='SELECT'?t.value:t.value;
  if(d.q==='plotNo'){p.plotNo=t.value;save();renderProjSel();syncQuick();return;}
  const fwd=(sel)=>{const el=$(sel);if(!el)return false;el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));return true;};
@@ -225,7 +225,7 @@ function stackHTML(h){const nB=+h.basements|0;let x=`<ol class="stack">`;
  x+=`<li><h3>2 · Ground floor – shops for sale</h3><div class="qgrid">${dimF('Ground floor – L x W ft or sq ft','gDim')}${numF('Number of shops','shops','e.g. 6')}${qi('Shop sizes sq ft (optional)','data-qs="shopList"','',{text:1,ph:'auto split, or 300, 450, 500'})}</div></li>`;
  x+=`<li><h3>3 · Parking floors above ground</h3><div class="qgrid">${numF('How many parking floors?','pN','0, 1, 2…')}${dimF('Parking floor – L x W ft or sq ft','pDim','same as residential')}</div></li>`;
  x+=`<li><h3>4 · Residential floors</h3><div class="qgrid">${numF('How many residential floors?','rN','e.g. 12')}${dimF('Floor plate – L x W ft or sq ft','rDim')}${numF('Flats per floor','upf','e.g. 4')}${numF('Flat size sq ft','usize','auto')}</div></li></ol>`;return x;}
-function stackVals(h){const sh=(dim,area,ok)=>{const a=+area>0&&ok!==false?+area:0;return dim&&H.dimA(dim)===a&&a?dim:(a?a:'');};const o={bN:h.basements===''||h.basements==null?'':+h.basements|0};
+function stackVals(h){const sh=(dim,area,ok)=>{const a=+area>0&&ok!==false?+area:0;if(dim&&String(dim).trim()&&!H.dimA(dim))return dim;return dim&&H.dimA(dim)===a&&a?dim:(a?a:'');};const o={bN:h.basements===''||h.basements==null?'':+h.basements|0};
  for(let i=0;i<(+h.basements|0);i++)o['b'+i]=sh((h.bDims||[])[i],(h.bAreas||[])[i]);
  o.gDim=sh(h.gDim,h.groundArea,h.groundAuto!==false);o.shops=h.shops||'';o.shopList=h.shopList||'';o.pN=h.podium===''||h.podium==null?'':+h.podium|0;o.pDim=sh(h.pDim,h.parkArea);o.rN=h.residential===''||h.residential==null?'':+h.residential|0;o.rDim=sh(h.rDim,h.plate);
  const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);o.upf=u.length?u.reduce((a,t)=>a+(+t.perFloor),0):'';o.usize=!h.uSizeAuto&&u.length===1&&+u[0].size>0?u[0].size:'';return o;}
@@ -312,4 +312,5 @@ $('#installBtn').onclick=async()=>{if(!defP)return;defP.prompt();await defP.user
 $('#ihClose').onclick=()=>{$('#installHint').hidden=true;st.hintClosed=true;save();};
 if(!standalone&&!st.hintClosed&&MQ.matches){if(/iphone|ipad|ipod/i.test(navigator.userAgent))$('#ihText').textContent='To install: tap the Share button, then "Add to Home Screen".';else $('#ihText').textContent='Install: open the browser menu ⋮ and choose "Add to Home screen" / "Install app".';$('#installHint').hidden=false;}
 window.__app={st:()=>st,renderAll,wizOpen,P,S,save,loadInputs,ensureHR,idb,applyMode,fmt,num,esc};
-loadInputs();renderAll();fitBar();if(!st.started){const p=P();if(!isEmpty(p)){const n=newProject();st.projects.unshift(n);st.cur=n.id;loadInputs();renderAll();}startShow();}save();})();
+loadInputs();renderAll();fitBar();if(!st.started){const p=P();if(!isEmpty(p)){const n=newProject();st.projects.unshift(n);st.cur=n.id;loadInputs();renderAll();}startShow();}save();
+document.addEventListener('focusin',e=>{const t=e.target;if(!MQ.matches||!t.matches||!t.matches('input,select,textarea'))return;setTimeout(()=>{const r=t.getBoundingClientRect(),n=document.querySelector('nav').getBoundingClientRect(),b=$('#totBar').getBoundingClientRect(),lim=Math.min(n.top,b.top)-8;if(r.bottom>lim)scrollBy(0,r.bottom-lim+12);else if(r.top<8)scrollBy(0,r.top-60);},60);});window.__ready=true;})();

@@ -134,7 +134,7 @@ async function readSource(src,page,always,step){const L=Math.max(src.W,src.H);
 function prog(pct,msg){document.querySelectorAll('.layProg').forEach(p=>{p.hidden=pct==null;p.querySelector('i').style.width=Math.round(pct||0)+'%';p.querySelector('.pmsg').textContent=msg||'';});document.querySelectorAll('.layRead').forEach(b=>b.disabled=pct!=null);}
 let busy=false;
 let cancelReq=false;
-async function autoRead(){if(busy||!cur)return;busy=true;cancelReq=false;const f=cur,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
+let again=false;async function autoRead(){if(!cur)return;if(busy){again=true;cancelReq=true;return;}busy=true;again=false;cancelReq=false;const f=cur,pid=P().id,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
  try{prog(3,'Getting ready…');let base=5,span=85;
   document.querySelectorAll('.layStop').forEach(b=>b.textContent='✋ Stop and use what I have');
   progCb=m=>{if(m.status==='recognizing text')return;else if(/load|initializ/.test(m.status))prog(Math.min(base,4+(m.progress||0)*4),'Loading the text reader (first time only)…');};
@@ -150,9 +150,9 @@ async function autoRead(){if(busy||!cur)return;busy=true;cancelReq=false;const f
   else{prog(5,'Preparing image…');const src=await imgSrc(f.blob);base=5;span=88;const r=await readSource(src,0,true,(m,fr)=>prog(base+span*fr,`Reading: ${m}…`));src.close&&src.close();lines=r.lines;}
   const secs=Math.round((Date.now()-t0)/1000);
   prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();r.secs=secs;r.stopped=cancelReq;
-  f.read=r;try{await saveRec(P().id,f);}catch(_){}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
+  f.read=r;try{await saveRec(pid,f);}catch(_){}if(cur!==f||P().id!==pid||again){prog(null);return;}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
  catch(e){prog(null);alert('Sorry, I could not read this file: '+(e&&e.message||e)+'\nYou can still enter sizes by hand.');}
- finally{busy=false;progCb=null;idleKill();warm();}}
+ finally{busy=false;progCb=null;idleKill();warm();if(again&&cur&&cur!==f){again=false;setTimeout(autoRead,0);}else again=false;}}
 // after the first auto-read, quietly fetch the other reader too so photos AND PDFs both work offline later
 let warmed=false;function warm(){if(warmed||!navigator.onLine)return;warmed=true;['pdfjs/pdf.min.mjs','pdfjs/pdf.worker.min.mjs','tesseract/tesseract.min.js','tesseract/worker.min.js','tesseract/tesseract-core-simd-lstm.wasm.js','lang/eng.traineddata.gz'].forEach((f,i)=>setTimeout(()=>fetch(VEND+f).catch(()=>{}),1500+i*500));}
 // ---------- review screen ----------

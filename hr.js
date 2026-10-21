@@ -37,9 +37,13 @@ function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.pl
  const plate=+h.plate>0?+h.plate:autoPlate;
  return{plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
 // "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
-function parseDim(v){const t=String(v==null?'':v).toLowerCase().replace(/,/g,'').replace(/sq\.?\s*ft|sft|ft|['"’]/g,'').trim();if(!t)return null;
- const m=t.match(/^(\d*\.?\d+)\s*[x×*by]+\s*(\d*\.?\d+)$/);if(m){const L=+m[1],W=+m[2];return L>0&&W>0?{L,W,area:L*W}:null;}
- const n=t.match(/^\d*\.?\d+$/);return n&&+t>0?{area:+t}:null;}
+function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/,/g,'').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
+ if(/-\s*\d+\s*(x|×|\*|by)|^-/.test(t.replace(/'\s*-\s*\d/g,"'"))&&/^-|[x×*]\s*-/.test(t))return null;
+ const side=x=>{x=x.trim().replace(/\s*(ft|feet)\b/g,"'").replace(/\s*(in|inch|inches)\b/g,'"');const m=x.match(/^(\d*\.?\d+)\s*'?\s*(?:-?\s*(\d*\.?\d+)\s*"?)?$/);if(!m)return NaN;const ft=+m[1],inch=m[2]!=null?+m[2]:0;if(m[2]!=null&&!/'/.test(x)&&!/"/.test(x))return NaN;if(inch>=12)return NaN;return ft+inch/12;};
+ const parts=t.split(/\s*(?:x|×|\*|by)\s*/);let r=null;
+ if(parts.length===2){const L=side(parts[0]),W=side(parts[1]);if(L>0&&W>0)r={L:+L.toFixed(3),W:+W.toFixed(3),area:Math.round(L*W*100)/100};}
+ else if(parts.length===1&&/^\d*\.?\d+$/.test(t)&&+t>0)r={area:+t};
+ if(r&&r.area>5e6)return null;return r;}
 const dimA=v=>{const d=parseDim(v);return d?d.area:0;};
 // shop sizes: typed list "300, 450" or auto split of the sellable ground area
 function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=String(h.shopList||'').split(/[,;\s]+/).map(Number).filter(x=>x>0);
