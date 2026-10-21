@@ -4,53 +4,69 @@ const esc=A.esc,n0=x=>Math.round(+x||0).toLocaleString('en-US');
 const VEND=new URL('vendor/',location.href).href;
 let lastId=null,cur=null,urls=[];
 const P=A.P,S=A.S;
-// ---------- storage: IndexedDB (Blob) -> IndexedDB (ArrayBuffer, for WebKit private mode) -> small JPEG copy in localStorage -> memory for this tab ----------
-const LSK='cc-layout-',mem={},modeOf={};
+// ---------- storage: a queue of files per project. IndexedDB (Blob) -> IndexedDB (ArrayBuffer, for WebKit private mode) -> small JPEG copies in localStorage -> memory for this tab ----------
+const LSK='cc-layout-',mem={},modeOf={},MAXF=20;
+let fidN=0;const fid=()=>'f'+Date.now().toString(36)+(fidN++);
 function dataURLtoBlob(d){const [h,b]=d.split(','),bin=atob(b),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);return new Blob([a],{type:(h.match(/:(.*?);/)||[])[1]||'image/jpeg'});}
-async function smallCopy(rec){if(rec.dataUrl)return rec.dataUrl;const isPdf=/pdf/.test(rec.type||'');let cv;
- if(isPdf){const pdf=await loadPdf(rec.blob);cv=await pdfCanvas(await pdf.getPage(1),1600);}else cv=await toCanvas(rec.blob,1600);
+const isPdfF=f=>/pdf/.test(f.type||(f.blob&&f.blob.type)||'');
+async function smallCopy(f){if(f.dataUrl)return f.dataUrl;let cv;
+ if(isPdfF(f)){const pdf=await loadPdf(f.blob);cv=await pdfCanvas(await pdf.getPage(1),1600);}else cv=await toCanvas(f.blob,1600);
  let d=cv.toDataURL('image/jpeg',.7);if(d.length>2.2e6){const c2=document.createElement('canvas'),k=1100/Math.max(cv.width,cv.height);c2.width=cv.width*k;c2.height=cv.height*k;c2.getContext('2d').drawImage(cv,0,0,c2.width,c2.height);d=c2.toDataURL('image/jpeg',.6);}
- return rec.dataUrl=d;}
+ return f.dataUrl=d;}
+const meta=f=>({id:f.id,name:f.name,type:f.type,at:f.at,pages:f.pages||null});
 async function saveRec(pid,rec){mem[pid]=rec;
- try{await A.idb('put',pid,{name:rec.name,blob:rec.blob,type:rec.type,at:rec.at,read:rec.read||null});try{localStorage.removeItem(LSK+pid);}catch(_){}return modeOf[pid]='idb';}catch(_){}
- try{const buf=await rec.blob.arrayBuffer();await A.idb('put',pid,{name:rec.name,buf,btype:rec.blob.type,type:rec.type,at:rec.at,read:rec.read||null});return modeOf[pid]='idb';}catch(_){}
- try{const d=await smallCopy(rec);localStorage.setItem(LSK+pid,JSON.stringify({name:rec.name,type:rec.type,at:rec.at,dataUrl:d,read:rec.read||null}));return modeOf[pid]='ls';}catch(_){try{localStorage.removeItem(LSK+pid);}catch(e){}}
+ try{await A.idb('put',pid,{files:rec.files.map(f=>Object.assign(meta(f),{blob:f.blob})),read:rec.read||null,readIds:rec.readIds||null});try{localStorage.removeItem(LSK+pid);}catch(_){}return modeOf[pid]='idb';}catch(_){}
+ try{const fs=[];for(const f of rec.files)fs.push(Object.assign(meta(f),{buf:await f.blob.arrayBuffer(),btype:f.blob.type}));await A.idb('put',pid,{files:fs,read:rec.read||null,readIds:rec.readIds||null});return modeOf[pid]='idb';}catch(_){}
+ try{const fs=[];for(const f of rec.files)fs.push(Object.assign(meta(f),{dataUrl:await smallCopy(f)}));localStorage.setItem(LSK+pid,JSON.stringify({files:fs,read:rec.read||null,readIds:rec.readIds||null}));return modeOf[pid]='ls';}catch(_){try{localStorage.removeItem(LSK+pid);}catch(e){}}
  return modeOf[pid]='mem';}
-async function loadRec(pid){if(mem[pid])return mem[pid];let f=null;try{f=await A.idb('get',pid);}catch(_){}
- if(f){if(!f.blob&&f.buf)f.blob=new Blob([f.buf],{type:f.btype||f.type});if(f.blob){modeOf[pid]='idb';return mem[pid]=f;}}
- try{const s=localStorage.getItem(LSK+pid);if(s){const o=JSON.parse(s);o.blob=dataURLtoBlob(o.dataUrl);o.type='image/jpeg';o.copy=true;modeOf[pid]='ls';return mem[pid]=o;}}catch(_){}
+// older versions stored a single file: {name,blob,type,at,read}
+function upgrade(o){if(o&&!o.files&&(o.blob||o.buf||o.dataUrl))o={files:[{id:fid(),name:o.name,blob:o.blob,buf:o.buf,btype:o.btype,dataUrl:o.dataUrl,type:o.type,at:o.at}],read:o.read||null};return o;}
+async function loadRec(pid){if(mem[pid])return mem[pid];let f=null;try{f=upgrade(await A.idb('get',pid));}catch(_){}
+ if(f&&f.files){f.files.forEach(x=>{if(!x.blob&&x.buf)x.blob=new Blob([x.buf],{type:x.btype||x.type});delete x.buf;});f.files=f.files.filter(x=>x.blob);if(f.files.length){modeOf[pid]='idb';return mem[pid]=f;}}
+ try{const s=localStorage.getItem(LSK+pid);if(s){const o=upgrade(JSON.parse(s));o.files.forEach(x=>{x.blob=dataURLtoBlob(x.dataUrl);x.type='image/jpeg';x.copy=true;});modeOf[pid]='ls';return mem[pid]=o;}}catch(_){}
  return null;}
 async function delRec(pid){delete mem[pid];delete modeOf[pid];try{await A.idb('delete',pid);}catch(_){}try{localStorage.removeItem(LSK+pid);}catch(_){}}
 function hosts(){return document.querySelectorAll('.layHost');}
-function cardHTML(where){return `<div class="card layCard"><div class="layTop"><div><h2>📎 Your layout drawing</h2><p class="sub">Photo, scan or PDF of your plan. Saved with this project${where==='est'?' – I can read room sizes from it':''}.</p></div>
- <div class="layBtns"><label class="file accent bigBtn">📎 Upload layout<input type="file" class="layIn" accept="image/*,application/pdf,.pdf"></label><label class="file camBtn">📷 Camera<input type="file" class="layIn" accept="image/*" capture="environment"></label></div></div>
- <div class="layView"></div><div class="layProg" hidden><div class="pbar"><i></i></div><p class="sub pmsg"></p><button class="mini layStop">✋ Stop and use what I have</button></div></div>`;}
-function viewHTML(f){if(!f)return '<p class="sub">No layout uploaded yet.</p>';const md=modeOf[P().id];
- const note=md==='mem'||md==='ls'?`<div class="warn friendly privNote">🕶️ Private browsing: the layout is kept until you close this tab. Open in a normal tab to save it.${md==='ls'&&f.copy?' (Showing a smaller saved copy.)':''}</div>`:'';
- const r=f.read,sum=r?`<p class="sub">🔍 Last read: ${r.rooms.length} rooms, ${r.units.length} unit types${r.plot?', plot found':''}.</p>`:'';
- return note+`<div class="layFile"><div class="layThumb"></div><div><b>${esc(f.name)}</b><p class="sub">${(f.blob.size/1024).toFixed(0)} KB · <a class="layOpen" href="#" target="_blank" rel="noopener">Open full size</a></p>${sum}
- <div class="bar"><button class="accent layRead">🔍 Auto-read layout</button>${r?'<button class="layReview">📝 Review last read</button>':''}<button class="danger layDel">🗑️ Remove</button></div></div></div>`;}
+function cardHTML(where){return `<div class="card layCard"><div class="layTop"><div><h2>📎 Your layout drawings</h2><p class="sub">Photos, scans or PDFs of your plans – pick several at once or add more one by one. Nothing is read until you press <b>Scan all</b>.</p></div>
+ <div class="layBtns"><label class="file accent bigBtn">📎 Upload layouts<input type="file" class="layIn" multiple accept="image/*,application/pdf,.pdf"></label><label class="file camBtn">📷 Camera<input type="file" class="layIn" accept="image/*" capture="environment"></label></div></div>
+ <div class="layView"></div><div class="layProg" hidden><div class="pbar"><i></i></div><p class="sub pmsg"></p><p class="sub pfile"></p><button class="mini layStop">✋ Stop and use what I have</button></div></div>`;}
+const kb=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+function viewHTML(rec){const fs=rec&&rec.files||[];if(!fs.length)return '<p class="sub">No layout uploaded yet.</p>';const md=modeOf[P().id];
+ const note=md==='mem'||md==='ls'?`<div class="warn friendly privNote">🕶️ Private browsing: the layout is kept until you close this tab. Open in a normal tab to save it.${md==='ls'&&fs.some(f=>f.copy)?' (Showing smaller saved copies.)':''}</div>`:'';
+ const r=rec.read,ids=rec.readIds||[],fresh=fs.filter(f=>!ids.includes(f.id)).length;
+ const sum=r?`<p class="sub">🔍 Last scan: ${r.rooms.length} rooms, ${(r.floorAreas||[]).length} floors, ${r.units.length} unit types from ${ids.length} file${ids.length===1?'':'s'}.${fresh?` <b>${fresh} new file${fresh>1?'s':''} not scanned yet.</b>`:''}</p>`:'';
+ const tot=fs.reduce((a,f)=>a+(isPdfF(f)?(f.pages||1):1),0);
+ return note+`<ol class="layQ">${fs.map((f,i)=>`<li data-fid="${f.id}"><div class="layThumb" data-fid="${f.id}"></div><div class="qInfo"><b>${i+1}. ${esc(f.name)}</b><span class="sub">${isPdfF(f)?`📄 PDF · <span class="qPages">${f.pages?f.pages+' page'+(f.pages>1?'s':''):'counting pages…'}</span>`:'🖼️ Image · 1 page'} · ${kb(f.blob.size)} · <a class="layOpen" data-fid="${f.id}" href="#" target="_blank" rel="noopener">Open</a></span><span class="sub qState">${ids.includes(f.id)?'✅ scanned':'⏳ waiting for Scan all'}</span></div><button class="mini layRm" data-fid="${f.id}" aria-label="Remove ${esc(f.name)}">✕</button></li>`).join('')}</ol>${sum}
+ <div class="bar layBar"><button class="accent layRead layScan">🔍 Scan all (${fs.length} file${fs.length>1?'s':''}, ${tot} page${tot>1?'s':''})</button><label class="file layAdd">➕ Add more<input type="file" class="layIn" multiple accept="image/*,application/pdf,.pdf"></label>${r?'<button class="layReview">📝 Review last scan</button>':''}<button class="danger layDel">🗑️ Remove all</button></div>`;}
 async function refresh(force){const p=P();if(!force&&p.id===lastId&&hosts()[0].firstChild)return;lastId=p.id;
  hosts().forEach(h=>{if(!h.firstChild)h.innerHTML=cardHTML(h.dataset.where);});
- const f=await loadRec(p.id);
+ const f=await loadRec(p.id);if(P().id!==p.id)return;
  cur=f||null;urls.forEach(u=>URL.revokeObjectURL(u));urls=[];
  hosts().forEach(h=>{h.querySelector('.layView').innerHTML=viewHTML(cur);});if(cur)thumbs(cur);}
-async function thumbs(f){const u=URL.createObjectURL(f.blob);urls.push(u);document.querySelectorAll('.layOpen').forEach(a=>a.href=u);
- const isPdf=/pdf/.test(f.type||f.blob.type);
- if(!isPdf){document.querySelectorAll('.layThumb').forEach(t=>t.innerHTML=`<img src="${u}" alt="Uploaded layout">`);return;}
- document.querySelectorAll('.layThumb').forEach(t=>t.innerHTML='<p class="sub">📄 PDF – loading preview…</p>');
- try{const pdf=await loadPdf(f.blob),pg=await pdf.getPage(1),cv=await pdfCanvas(pg,900);const d=cv.toDataURL('image/jpeg',.85);document.querySelectorAll('.layThumb').forEach(t=>t.innerHTML=`<img src="${d}" alt="Uploaded layout PDF, page 1">${pdf.numPages>1?`<small>page 1 of ${pdf.numPages}</small>`:''}`);}
- catch(e){document.querySelectorAll('.layThumb').forEach(t=>t.innerHTML='<p class="sub">📄 PDF saved. Preview needs an internet connection the first time.</p>');}}
-// ---------- upload ----------
-document.addEventListener('change',async e=>{const t=e.target;if(!t.classList||!t.classList.contains('layIn'))return;const f=t.files&&t.files[0];t.value='';if(!f)return;
- if(f.size>40e6){alert('That file is larger than 40 MB. Please upload a smaller photo or PDF.');return;}
- const isPdf=/pdf/.test(f.type)||/\.pdf$/i.test(f.name);if(!isPdf&&f.type&&!/^image\//.test(f.type)){alert('Please choose a photo/image or a PDF.');return;}
- let blob=f;if(!isPdf){try{blob=await shrink(f,2400,.9);}catch(_){blob=f;}}// keep phone photos small; also turns HEIC into JPEG where the browser can decode it
- A.save();const rec={name:f.name||'layout',blob,type:isPdf?'application/pdf':blob.type,at:Date.now()};cur=rec;mem[P().id]=rec;modeOf[P().id]='pending';
- await refresh(true);try{await saveRec(P().id,rec);}catch(_){}await refresh(true);
- await refresh(true);autoRead();});
-document.addEventListener('click',async e=>{const b=e.target.closest('.layRead,.layDel,.layReview,.layStop,#lrevX');if(!b)return;if(b.classList.contains('layStop')){cancelReq=true;b.textContent='Stopping…';return;}
- if(b.classList.contains('layDel')){if(!confirm('Remove the uploaded layout from this project?'))return;await delRec(P().id);cur=null;refresh(true);}
+const thumbCache={};
+async function thumbs(rec){for(const f of rec.files){const u=URL.createObjectURL(f.blob);urls.push(u);document.querySelectorAll(`.layOpen[data-fid="${f.id}"]`).forEach(a=>a.href=u);const tt=()=>document.querySelectorAll(`.layThumb[data-fid="${f.id}"]`);
+  if(!isPdfF(f)){tt().forEach(t=>t.innerHTML=`<img src="${u}" alt="${esc(f.name)}">`);continue;}
+  if(thumbCache[f.id]){tt().forEach(t=>t.innerHTML=thumbCache[f.id]);continue;}
+  tt().forEach(t=>t.innerHTML='<span class="sub">📄</span>');
+  try{const pdf=await loadPdf(f.blob);if(f.pages!==pdf.numPages){f.pages=pdf.numPages;document.querySelectorAll(`li[data-fid="${f.id}"] .qPages`).forEach(s=>s.textContent=f.pages+' page'+(f.pages>1?'s':''));const sb=document.querySelectorAll('.layScan');const tot=rec.files.reduce((a,x)=>a+(isPdfF(x)?(x.pages||1):1),0);sb.forEach(b=>b.textContent=`🔍 Scan all (${rec.files.length} file${rec.files.length>1?'s':''}, ${tot} page${tot>1?'s':''})`);}
+   const cv=await pdfCanvas(await pdf.getPage(1),300);thumbCache[f.id]=`<img src="${cv.toDataURL('image/jpeg',.8)}" alt="${esc(f.name)}, page 1">`;free(cv);tt().forEach(t=>t.innerHTML=thumbCache[f.id]);}
+  catch(e){tt().forEach(t=>t.innerHTML='<span class="sub">📄 PDF</span>');}}}
+// ---------- upload: adds to the queue, never starts reading by itself ----------
+let addChain=Promise.resolve();
+document.addEventListener('change',e=>{const t=e.target;if(!t.classList||!t.classList.contains('layIn'))return;const picked=Array.from(t.files||[]);t.value='';// reset so picking the same file again fires (iPhone Safari)
+ if(!picked.length)return;const pid=P().id;addChain=addChain.then(()=>addFiles(pid,picked)).catch(()=>{});});
+async function addFiles(pid,picked){const bad=[],big=[];let rec=cur&&P().id===pid?cur:await loadRec(pid);if(!rec)rec={files:[],read:null};
+ for(const f of picked){if(rec.files.length>=MAXF){alert(`Up to ${MAXF} files per project. Remove some to add more.`);break;}
+  if(f.size>40e6){big.push(f.name);continue;}const isPdf=/pdf/.test(f.type)||/\.pdf$/i.test(f.name);if(!isPdf&&f.type&&!/^image\//.test(f.type)){bad.push(f.name);continue;}
+  let blob=f;if(!isPdf){try{blob=await shrink(f,2400,.9);}catch(_){blob=f;}}// keep phone photos small; also turns HEIC into JPEG where the browser can decode it
+  rec.files.push({id:fid(),name:f.name||(isPdf?'layout.pdf':'photo.jpg'),blob,type:isPdf?'application/pdf':blob.type||'image/jpeg',at:Date.now()});}
+ if(big.length)alert('That file is larger than 40 MB. Please upload a smaller photo or PDF:\n'+big.join('\n'));
+ if(bad.length)alert('Please choose a photo/image or a PDF. Skipped:\n'+bad.join('\n'));
+ if(P().id!==pid)return;A.save();cur=rec;mem[pid]=rec;modeOf[pid]=modeOf[pid]||'pending';await refresh(true);try{await saveRec(pid,rec);}catch(_){}if(P().id===pid)await refresh(true);
+ if(rec.files.length)toast(`📎 ${rec.files.length} file${rec.files.length>1?'s':''} ready – press “Scan all” when you have added everything.`);}
+document.addEventListener('click',async e=>{const b=e.target.closest('.layRead,.layDel,.layReview,.layStop,.layRm,#lrevX');if(!b)return;if(b.classList.contains('layStop')){cancelReq=true;b.textContent='Stopping…';return;}
+ if(b.classList.contains('layRm')){if(busy){alert('Please wait until the scan finishes (or press Stop).');return;}const id=b.dataset.fid;if(!cur)return;cur.files=cur.files.filter(f=>f.id!==id);if(!cur.files.length){await delRec(P().id);cur=null;}else await saveRec(P().id,cur);refresh(true);return;}
+ if(b.classList.contains('layDel')){if(busy){alert('Please wait until the scan finishes (or press Stop).');return;}if(!confirm('Remove all uploaded layouts from this project?'))return;await delRec(P().id);cur=null;refresh(true);}
  else if(b.classList.contains('layRead'))autoRead();else if(b.classList.contains('layReview')){if(cur&&cur.read)review(cur.read);}else if(b.id==='lrevX')closeRev();});
 function toast(m){const n=document.createElement('div');n.className='toast';n.textContent=m;document.body.appendChild(n);setTimeout(()=>n.remove(),4500);}
 // ---------- image helpers ----------
@@ -161,25 +177,37 @@ async function readSource(src,page,always,step,fixed){let L=Math.max(src.W,src.H
 function prog(pct,msg){document.querySelectorAll('.layProg').forEach(p=>{p.hidden=pct==null;p.querySelector('i').style.width=Math.round(pct||0)+'%';p.querySelector('.pmsg').textContent=msg||'';});document.querySelectorAll('.layRead').forEach(b=>b.disabled=pct!=null);}
 let busy=false,LAYINFO=[];
 let cancelReq=false;
-let again=false;async function autoRead(){if(!cur)return;if(busy){again=true;cancelReq=true;return;}busy=true;again=false;cancelReq=false;const f=cur,pid=P().id,isPdf=/pdf/.test(f.type||f.blob.type);let lines=[];
+let again=false;async function autoRead(){if(!cur||!cur.files||!cur.files.length)return;if(busy)return;busy=true;cancelReq=false;const rec=cur,pid=P().id,files=rec.files.slice(),F=files.length;let lines=[],po=0;const pageLab=[],pageSrc=[];
  try{prog(3,'Getting ready…');let base=5,span=85;
   document.querySelectorAll('.layStop').forEach(b=>b.textContent='✋ Stop and use what I have');
   progCb=m=>{if(m.status==='recognizing text')return;else if(/load|initializ/.test(m.status))prog(Math.min(base,4+(m.progress||0)*4),'Loading the text reader (first time only)…');};
-  const t0=Date.now();LAYINFO=[];
-  if(isPdf){prog(5,'Opening PDF…');const pdf=await loadPdf(f.blob),N=Math.min(pdf.numPages,40);let plans=0;
-   for(let i=1;i<=N&&!cancelReq;i++){base=5+88*(i-1)/N;span=88/N;const lab=`Page ${i} of ${N}`;prog(base,lab+'…');const pg=await pdf.getPage(i),v=pg.getViewport({scale:1}),tc=await pg.getTextContent(),pl=pdfLines(tc.items,v.height,i-1),txt=pl.map(l=>l.text).join(' ');
-    let useOcr=txt.replace(/\s/g,'').length<15;if(!useOcr&&!PLANRE.test(txt)){try{const ops=await pg.getOperatorList(),O=pdfjs.OPS;useOcr=ops.fnArray.some(x=>x===O.paintImageXObject||x===O.paintJpegXObject||x===O.paintInlineImageXObject);}catch(_){}}
-    lines=lines.concat(pl);
-    if(useOcr){const r=await readSource(pdfSrc(pg),i-1,false,(m,fr)=>prog(base+span*fr,`${lab}: ${m}…`));lines=lines.concat(r.lines);if(r.plan)plans++;}
-    else if(PLANRE.test(txt))plans++;
-    pg.cleanup&&pg.cleanup();}
-   lines.plans=plans;lines.pagesN=N;}
-  else{prog(5,'Preparing image…');const src=await imgSrc(f.blob);base=5;span=88;const r=await readSource(src,0,true,(m,fr)=>prog(base+span*fr,`Reading: ${m}…`));src.close&&src.close();lines=r.lines;}
+  const t0=Date.now();LAYINFO=[];let pagesRead=0;
+  const fileLab=(fi,f)=>`File ${fi+1} of ${F}: ${f.name}`,setFile=(fi,f)=>document.querySelectorAll('.layProg .pfile').forEach(p=>p.textContent=fileLab(fi,f));
+  for(let fi=0;fi<F&&!cancelReq;fi++){const f=files[fi],fb=5+88*fi/F,fs=88/F;setFile(fi,f);document.querySelectorAll(`li[data-fid="${f.id}"] .qState`).forEach(s=>s.textContent='🔍 scanning…');
+   if(isPdfF(f)){prog(fb,'Opening PDF…');const pdf=await loadPdf(f.blob),N=Math.min(pdf.numPages,40);f.pages=pdf.numPages;
+    for(let i=1;i<=N&&!cancelReq;i++){const pi=po+i-1;pageLab[pi]=F>1?`${f.name} p${i}`:'Page '+i;pageSrc[pi]={file:f.name,page:i};base=fb+fs*(i-1)/N;span=fs/N;const lab=`Page ${i} of ${N}`;prog(base,lab+'…');const pg=await pdf.getPage(i),v=pg.getViewport({scale:1}),tc=await pg.getTextContent(),pl=pdfLines(tc.items,v.height,pi),txt=pl.map(l=>l.text).join(' ');
+     let useOcr=txt.replace(/\s/g,'').length<15;if(!useOcr&&!PLANRE.test(txt)){try{const ops=await pg.getOperatorList(),O=pdfjs.OPS;useOcr=ops.fnArray.some(x=>x===O.paintImageXObject||x===O.paintJpegXObject||x===O.paintInlineImageXObject);}catch(_){}}
+     lines=lines.concat(pl);
+     if(useOcr){const r=await readSource(pdfSrc(pg),pi,false,(m,fr)=>prog(base+span*fr,`${lab}: ${m}…`));lines=lines.concat(r.lines);}
+     pagesRead++;pg.cleanup&&pg.cleanup();}
+    po+=N;}
+   else{base=fb;span=fs;pageLab[po]=F>1?f.name:'Page 1';pageSrc[po]={file:f.name,page:1};prog(fb,'Preparing image…');const src=await imgSrc(f.blob);const r=await readSource(src,po,true,(m,fr)=>prog(base+span*fr,`Page 1 of 1: ${m}…`));src.close&&src.close();lines=lines.concat(r.lines);po++;pagesRead++;}
+   document.querySelectorAll(`li[data-fid="${f.id}"] .qState`).forEach(s=>s.textContent='✅ scanned');}
   const secs=Math.round((Date.now()-t0)/1000);
-  prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225});r.file=f.name;r.at=Date.now();r.secs=secs;r.stopped=cancelReq;r.info=LAYINFO.slice();r.pages=isPdf?lines.pagesN||null:1;
-  f.read=r;try{await saveRec(pid,f);}catch(_){}if(cur!==f||P().id!==pid||again){prog(null);return;}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
- catch(e){prog(null);alert('Sorry, I could not read this file: '+(e&&e.message||e)+'\nYou can still enter sizes by hand.');}
- finally{busy=false;progCb=null;idleKill();warm();if(again&&cur&&cur!==f){again=false;setTimeout(autoRead,0);}else again=false;}}
+  prog(95,'Finding rooms & sizes…');window.LAY&&(LAY.lines=lines);const r=LP.parse(lines,{marla:+S().marlaSqft||225,pageLabel:pageLab});
+  merge(r,pageSrc);r.files=files.map(f=>f.name);r.file=r.files.join(', ');r.at=Date.now();r.secs=secs;r.stopped=cancelReq;r.info=LAYINFO.slice();r.pages=pagesRead;
+  rec.read=r;rec.readIds=files.map(f=>f.id);try{await saveRec(pid,rec);}catch(_){}if(cur!==rec||P().id!==pid){prog(null);return;}prog(100,'Done');setTimeout(()=>prog(null),600);refresh(true);review(r);}
+ catch(e){prog(null);alert('Sorry, I could not read this file: '+(e&&e.message||e)+'\nYou can still enter sizes by hand.');refresh(true);}
+ finally{busy=false;progCb=null;idleKill();warm();}}
+// tag every item with the file (and page) it came from; drop repeats that several files show (same floor / unit / room)
+function merge(r,pageSrc){const src=p=>{const s=pageSrc[p];return s?(r.files&&r.files.length===1?'':s.file)+(s.file&&pageSrc.filter(Boolean).filter(x=>x.file===s.file).length>1?' p'+s.page:''):'';};
+ const tag=(x,p)=>{x.src=p!=null&&pageSrc[p]?[pageSrc[p].file+(pageSrc.filter(Boolean).filter(y=>y.file===pageSrc[p].file).length>1?' p'+pageSrc[p].page:'')]:[];return x;};
+ r.rooms.forEach(x=>tag(x,x.page));r.units.forEach(x=>tag(x,x.page));(r.floorAreas||[]).forEach(x=>{tag(x,x.page);(x.pages||[]).forEach(pp=>{const t=tag({},pp).src[0];if(t&&!x.src.includes(t))x.src.push(t);});});
+ const dd=(list,key,better)=>{const m=new Map(),out=[];list.forEach(x=>{const k=key(x);if(k==null){out.push(x);return;}const o=m.get(k);if(!o){m.set(k,x);out.push(x);return;}const w=better(x,o)?x:o,l=w===x?o:x;w.src=[...new Set([...(w.src||[]),...(l.src||[])])];w.dups=(w.dups||0)+1+(l.dups||0);if(w===x)out[out.indexOf(o)]=x,m.set(k,x);});return out;};
+ r.units=dd(r.units,u=>(u.name||'').toLowerCase().replace(/\s+/g,' ').replace(/ \(unit plan\)/,''),(a,b)=>(!!a.sqft-!!b.sqft)||(!!a.count-!!b.count)||(a.conf-b.conf)>0);
+ r.floorAreas=dd(r.floorAreas||[],f=>f.floor.toLowerCase(),(a,b)=>a.conf>b.conf);
+ const files=new Set(pageSrc.filter(Boolean).map(s=>s.file));if(files.size>1){r.rooms=dd(r.rooms,x=>x.sqft?[x.name.toLowerCase(),x.floor.toLowerCase(),Math.round(x.sqft)].join('|')+'|'+(r.rooms.filter(y=>y.name===x.name&&y.floor===x.floor&&y.src[0]===x.src[0]&&Math.round(y.sqft||0)===Math.round(x.sqft)).indexOf(x)):null,(a,b)=>a.conf>b.conf);}
+ r.stats.rooms=r.rooms.length;r.stats.units=r.units.length;}
 // after the first auto-read, quietly fetch the other reader too so photos AND PDFs both work offline later
 let warmed=false;function warm(){if(warmed||!navigator.onLine)return;warmed=true;['pdfjs/pdf.min.mjs','pdfjs/pdf.worker.min.mjs','tesseract/tesseract.min.js','tesseract/worker.min.js','tesseract/tesseract-core-simd-lstm.wasm.js','lang/eng.traineddata.gz'].forEach((f,i)=>setTimeout(()=>fetch(VEND+f).catch(()=>{}),1500+i*500));}
 // ---------- review screen ----------
@@ -195,6 +223,7 @@ function review(r){R=JSON.parse(JSON.stringify(r));R.floorAreas=R.floorAreas||[]
 function closeRev(){$('#lrev').hidden=true;}
 function floorsCalc(){const fs={};R.rooms.forEach(r=>{if(!r.on||!(r.sqft>0))return;const f=fs[r.floor]||(fs[r.floor]={floor:r.floor,level:r.level,kind:r.floorKind,sq:0,shop:0,baths:0,rooms:0});if(!/lawn|terrace|parking/.test(r.type))f.sq+=+r.sqft;if(r.type==='shop')f.shop+=+r.sqft;if(r.type==='bath')f.baths++;if(!/lawn|terrace|corridor|stair|lift|lobby|parking/.test(r.type))f.rooms++;});
  const k=1+(+R.wfPct||0)/100;return Object.values(fs).sort((a,b)=>a.level-b.level).map(f=>Object.assign(f,{cov:Math.round(f.sq*k)}));}
+const srcT=x=>x&&x.src&&x.src.filter(Boolean).length?`<small class="rawsrc srcF">📎 ${esc(x.src.filter(Boolean).join(', '))}${x.dups?` <i>(seen ${x.dups+1}×, merged${x.merged?': '+esc(x.merged.join(', ')):''})</i>`:''}</small>`:'';
 const blank=v=>v===''||v==null||!(+v>0);const ch=(o,n)=>blank(o)?n:`${o} → ${n}`;
 function proposals(){const p=P(),hr=p.mode==='highrise',out=[],fl=floorsCalc(),pu=plotUnitOf();
  if(R.plot&&R.plotOn){const v=+(R.plot.sqft/unitSq(pu)).toFixed(1),old=hr?p.hr.plotArea:p.plotArea;out.push({id:'plot',t:`Plot area: ${ch(blank(old)?'':n0(old),`<b>${v}</b>`)} ${pu==='sqyd'?'sq yd':pu}`+(R.plot.w?` (${R.plot.w} × ${R.plot.d} ft)`:''),f:()=>{if(hr){p.hr.plotArea=v;if(R.plot.w){p.hr.plotW=R.plot.w;p.hr.plotD=R.plot.d;}}else{if(p.plotPriceMode==='perunit'){}p.plotArea=v;}}});}
@@ -223,20 +252,20 @@ function drawRev(){const r=R,hr=P().mode==='highrise',pu=plotUnitOf();let x='';
  if(r.little)x+=`<div class="warn friendly">🙈 I couldn't read much from this layout. That's normal for hand sketches, blurry photos or drawings with tiny text.<br>Tips: take the photo straight on in good light, crop to one floor, or upload the architect's PDF. You can also type the sizes below or in the Estimate tab.</div>`;
  x+=`<p class="sub">Nothing changes until you press <b>Apply selected</b>. Untick anything that looks wrong and fix numbers right here.</p>`;
  x+=`<h3>🗺️ Plot</h3>`+(r.plot?`<label class="chk"><input type="checkbox" data-k="plotOn" ${r.plotOn?'checked':''}> Plot ${r.plot.w?`${r.plot.w} × ${r.plot.d} ft = `:''}${inp('plotSqft',r.plot.sqft,null,90)} sq ft (= ${(r.plot.sqft/unitSq(pu)).toFixed(1)} ${pu==='sqyd'?'sq yd':pu}) ${badge(r.plot.conf)}</label><p class="sub">Read as “${esc(r.plot.raw)}”</p>`:'<p class="sub">No plot size found (look for text like “Plot 30\' × 60\'” or “200 sq yd”).</p>');
- const nOn=r.rooms.filter(m=>m.on).length;x+=`<p class="sub readInfo">📄 ${r.pages>1?r.pages+' pages read one by one':'1 page read'}${r.secs!=null?` in ${r.secs}s`:''}${(r.info||[]).length?' · '+esc(r.info.join(' · ')):''}${r.stopped?' · <b>stopped early</b>':''}</p>`;
+ const nOn=r.rooms.filter(m=>m.on).length;x+=`<p class="sub readInfo">${(r.files||[]).length>1?`📎 ${r.files.length} files merged: ${esc(r.files.join(', '))}<br>`:''}📄 ${r.pages>1?r.pages+' pages read one by one':'1 page read'}${r.secs!=null?` in ${r.secs}s`:''}${(r.info||[]).length?' · '+esc(r.info.join(' · ')):''}${r.stopped?' · <b>stopped early</b>':''}</p>`;
  const lowN=r.rooms.filter(m=>m.sqft!=null&&m.conf<.5).length+r.units.filter(u=>u.conf<.5).length+r.floorAreas.filter(f=>f.conf<.5).length;
  if(lowN)x+=`<div class="warn">⚠️ ${lowN} value${lowN>1?'s':''} I'm not sure about ${lowN>1?'are':'is'} <b>not ticked</b>. Check ${lowN>1?'them':'it'} against your drawing, fix the number and tick ${lowN>1?'them':'it'} if right.</div>`;
  x+=`<h3>🏢 Floors found (${r.floorAreas.length})</h3>`;
- if(r.floorAreas.length){x+='<div class="rtWrap"><table class="rt fa"><thead><tr><th></th><th>Floor</th><th>How many</th><th>Area each, sq ft</th><th>Use</th><th>Sure?</th></tr></thead><tbody>'+r.floorAreas.map((f,i)=>`<tr class="${f.on?'':'off'}" title="${esc(f.raw||'')}"><td><input type="checkbox" data-k="fon" data-i="${i}" ${f.on?'checked':''} aria-label="Use ${esc(f.floor)}"></td><td><input data-k="fname" data-i="${i}" value="${esc(f.floor)}" style="width:120px"><small class="rawsrc">“${esc((f.raw||'').slice(0,60))}”</small></td><td data-l="How many">${inp('fcount',f.count,i,44)}</td><td data-l="Area each, sq ft">${inp('fsqft',f.sqft,i,80)}</td><td data-l="Use"><select data-k="fuse" data-i="${i}">${[['parking','Parking'],['commercial','Shops / commercial'],['residential','Apartments / residential'],['skip','Other (ignore)']].map(([v,l])=>`<option value="${v}" ${f.use===v?'selected':''}>${l}</option>`).join('')}</select></td><td>${badge(f.conf)}</td></tr>`).join('')+'</tbody></table></div>';}
+ if(r.floorAreas.length){x+='<div class="rtWrap"><table class="rt fa"><thead><tr><th></th><th>Floor</th><th>How many</th><th>Area each, sq ft</th><th>Use</th><th>Sure?</th></tr></thead><tbody>'+r.floorAreas.map((f,i)=>`<tr class="${f.on?'':'off'}" title="${esc(f.raw||'')}"><td><input type="checkbox" data-k="fon" data-i="${i}" ${f.on?'checked':''} aria-label="Use ${esc(f.floor)}"></td><td><input data-k="fname" data-i="${i}" value="${esc(f.floor)}" style="width:120px"><small class="rawsrc">“${esc((f.raw||'').slice(0,60))}”</small>${srcT(f)}</td><td data-l="How many">${inp('fcount',f.count,i,44)}</td><td data-l="Area each, sq ft">${inp('fsqft',f.sqft,i,80)}</td><td data-l="Use"><select data-k="fuse" data-i="${i}">${[['parking','Parking'],['commercial','Shops / commercial'],['residential','Apartments / residential'],['skip','Other (ignore)']].map(([v,l])=>`<option value="${v}" ${f.use===v?'selected':''}>${l}</option>`).join('')}</select></td><td>${badge(f.conf)}</td></tr>`).join('')+'</tbody></table></div>';}
  else x+='<p class="sub">No floor area table / area statement found (e.g. “Ground floor covered area = 1,650 sft”).</p>';
  x+=`<h3>🛏️ Rooms (${r.rooms.length}${r.rooms.length?`, ${nOn} ticked`:''})</h3>`;
- if(r.rooms.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Room</th><th>W ft</th><th>L ft</th><th>Area sq ft</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.rooms.map((m,i)=>(i===0||r.rooms[i-1].floor!==m.floor?`<tr class="grp"><td></td><td colspan="6">📍 ${esc(m.floor)} · ${r.rooms.filter(q=>q.floor===m.floor).length} rooms</td></tr>`:'')+`<tr class="${m.on?'':'off'}${m.sqft!=null&&m.conf<.5?' lowc':''}"><td><input type="checkbox" data-k="on" data-i="${i}" ${m.on?'checked':''} aria-label="Use ${esc(m.name)}"></td><td><input data-k="name" data-i="${i}" value="${esc(m.name)}" style="width:110px"></td><td data-l="W ft">${inp('w',m.w,i,56)}</td><td data-l="L ft">${inp('d',m.d,i,56)}</td><td data-l="Area sq ft">${inp('sqft',m.sqft,i,70)}</td><td data-l="Floor"><input data-k="floor" data-i="${i}" value="${esc(m.floor)}" style="width:100px"></td><td>${badge(m.conf)}${m.metric?' <small>m→ft</small>':''}</td></tr>`).join('')+'</tbody></table></div>';}
+ if(r.rooms.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Room</th><th>W ft</th><th>L ft</th><th>Area sq ft</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.rooms.map((m,i)=>(i===0||r.rooms[i-1].floor!==m.floor?`<tr class="grp"><td></td><td colspan="6">📍 ${esc(m.floor)} · ${r.rooms.filter(q=>q.floor===m.floor).length} rooms</td></tr>`:'')+`<tr class="${m.on?'':'off'}${m.sqft!=null&&m.conf<.5?' lowc':''}"><td><input type="checkbox" data-k="on" data-i="${i}" ${m.on?'checked':''} aria-label="Use ${esc(m.name)}"></td><td><input data-k="name" data-i="${i}" value="${esc(m.name)}" style="width:110px">${srcT(m)}</td><td data-l="W ft">${inp('w',m.w,i,56)}</td><td data-l="L ft">${inp('d',m.d,i,56)}</td><td data-l="Area sq ft">${inp('sqft',m.sqft,i,70)}</td><td data-l="Floor"><input data-k="floor" data-i="${i}" value="${esc(m.floor)}" style="width:100px"></td><td>${badge(m.conf)}${m.metric?' <small>m→ft</small>':''}</td></tr>`).join('')+'</tbody></table></div>';}
  else x+='<p class="sub">No room labels found.</p>';
  const fl=floorsCalc();
  if(fl.length)x+=`<label class="wfp">Walls &amp; passages add ${inp('wfPct',r.wfPct,null,50)} % to room areas</label><table class="rt sumf"><tr><th>Floor</th><th>Rooms total</th><th>≈ Covered area</th><th>Baths</th></tr>`+fl.map(f=>`<tr><td>${esc(f.floor)}</td><td>${n0(f.sq)} sq ft</td><td><b>${n0(f.cov)} sq ft</b></td><td>${f.baths}</td></tr>`).join('')+'</table>';
  if(r.covered.length)x+=`<label class="chk"><input type="checkbox" data-k="useCov" ${r.useCov?'checked':''}> Use the covered area printed on the drawing: ${r.covered.map(c=>`<b>${n0(c.sqft)}</b> sq ft ${badge(c.conf)}`).join(', ')}</label>`;
  x+=`<h3>🏢 Unit types (${r.units.length})</h3>`;
- if(r.units.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Unit</th><th>Beds</th><th>Size sq ft</th><th>Per floor</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.units.map((u,i)=>`<tr class="${u.on?'':'off'}"><td><input type="checkbox" data-k="uon" data-i="${i}" ${u.on?'checked':''}></td><td><input data-k="uname" data-i="${i}" value="${esc(u.name)}" style="width:120px"></td><td data-l="Beds">${inp('ubeds',u.beds,i,40)}</td><td data-l="Size sq ft">${inp('usqft',u.sqft,i,70)}</td><td data-l="Per floor">${inp('ucount',u.count,i,44)}${!(+u.count>0)?'<small class="need">fill in</small>':''}</td><td data-l="Floor">${esc(u.floor)}</td><td>${badge(u.conf)}${u.fromRooms?' <small>from rooms</small>':''}${u.areas&&Object.keys(u.areas).filter(k=>u.areas[k]).length>1?`<br><small>${Object.keys(u.areas).filter(k=>u.areas[k]).map(k=>k+' '+n0(u.areas[k])).join(' · ')}</small>`:''}</td></tr>`).join('')+'</tbody></table></div>';
+ if(r.units.length){x+='<div class="rtWrap"><table class="rt"><thead><tr><th></th><th>Unit</th><th>Beds</th><th>Size sq ft</th><th>Per floor</th><th>Floor</th><th>Sure?</th></tr></thead><tbody>'+r.units.map((u,i)=>`<tr class="${u.on?'':'off'}"><td><input type="checkbox" data-k="uon" data-i="${i}" ${u.on?'checked':''}></td><td><input data-k="uname" data-i="${i}" value="${esc(u.name)}" style="width:120px">${srcT(u)}</td><td data-l="Beds">${inp('ubeds',u.beds,i,40)}</td><td data-l="Size sq ft">${inp('usqft',u.sqft,i,70)}</td><td data-l="Per floor">${inp('ucount',u.count,i,44)}${!(+u.count>0)?'<small class="need">fill in</small>':''}</td><td data-l="Floor">${esc(u.floor)}</td><td>${badge(u.conf)}${u.fromRooms?' <small>from rooms</small>':''}${u.areas&&Object.keys(u.areas).filter(k=>u.areas[k]).length>1?`<br><small>${Object.keys(u.areas).filter(k=>u.areas[k]).map(k=>k+' '+n0(u.areas[k])).join(' · ')}</small>`:''}</td></tr>`).join('')+'</tbody></table></div>';
   if(hr)x+=`<div class="chips small"><button data-mix="replace" class="${R.mixMode!=='merge'?'on':''}">Replace unit mix</button><button data-mix="merge" class="${R.mixMode==='merge'?'on':''}">Update / add to mix</button></div>`;}
  else x+=`<p class="sub">No flat/unit labels found${hr?' (e.g. “2 BED”, “3BHK”, “Type A”)':''}.</p>`;
  const pr=proposals();x+=`<h3>✅ Apply to this ${hr?'high-rise':'house'} project</h3>`+(pr.length?'<div class="props">'+pr.map(q=>`<label class="chk"><input type="checkbox" data-prop="${q.id}" ${R['no_'+q.id]?'':'checked'}> <span>${q.t}</span></label>`).join('')+'</div>':'<p class="sub">Nothing to apply yet – tick or fill in some rows above.</p>');
