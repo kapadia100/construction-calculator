@@ -1,4 +1,4 @@
-const CACHE='constructcalc-v12',FILES=['./','./index.html','./style.css','./config.js','./hr.js','./calc.js','./app.js','./parse.js','./layout.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE='constructcalc-v13',FILES=['./','./index.html','./style.css','./config.js','./hr.js','./calc.js','./app.js','./parse.js','./layout.js','./manifest.webmanifest','./icons/icon.svg','./icons/icon-192.png','./icons/icon-512.png'];
 // Some static hosts occasionally send a wrong Content-Type / Vary; store every file with the correct type so offline use never breaks.
 const TYPES={css:'text/css',js:'text/javascript',mjs:'text/javascript',html:'text/html',webmanifest:'application/manifest+json',svg:'image/svg+xml',png:'image/png',json:'application/json'};
 const typeOf=u=>{const p=new URL(u).pathname,e=p.endsWith('/')?'html':p.split('.').pop();return TYPES[e];};

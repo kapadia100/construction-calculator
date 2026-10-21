@@ -1,7 +1,15 @@
 (function(){const C=window.Calc,$=s=>document.querySelector(s),KEY='gharganit-pk-v1';
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const newProject=n=>({id:'p'+Date.now()+Math.random().toString(36).slice(2,6),name:n||'My dream ghar',plotArea:200,plotUnit:'sqyd',plotPrice:60000,plotPriceMode:'perunit',floors:2,bua:1500,quality:'B',scope:'full',extra:'none',site:true,override:false,floorAreas:[],edits:{},custom:[]});
+const newProject=n=>({id:'p'+Date.now()+Math.random().toString(36).slice(2,6),name:n||'My project',plotNo:'',plotArea:'',plotUnit:'sqyd',plotPrice:'',plotPriceMode:'total',floors:'',bua:'',quality:'B',scope:'full',extra:'none',site:true,override:false,floorAreas:[],edits:{},custom:[]});
 let st;try{st=JSON.parse(localStorage.getItem(KEY));}catch(e){}
+if(st&&Array.isArray(st.projects)&&st.projects.length&&!st.settings)st.settings=C.clone(C.DEFAULT_SETTINGS);
+if(st&&st.projects&&st.projects.length&&!st.projects.some(p=>p.id===st.cur))st.cur=st.projects[0].id;
+// v13: an untouched old auto-created sample project is replaced by an empty one (edited projects are kept)
+function legacySample(p){if(!p||p.name!=='My dream ghar'||p.plotNo)return false;const same=(o,k,v)=>String(o[k])===String(v);
+ if(!(same(p,'plotArea',200)&&same(p,'plotUnit','sqyd')&&same(p,'plotPrice',60000)&&same(p,'plotPriceMode','perunit')&&same(p,'floors',2)&&same(p,'bua',1500)&&same(p,'quality','B')&&same(p,'scope','full')&&same(p,'extra','none')&&!p.override))return false;
+ if(Object.keys(p.edits||{}).length||(p.custom||[]).length)return false;const h=p.hr;if(!h)return true;const D=window.HR.DEFAULT_HR;
+ return ['plotArea','plotPrice','basements','podium','commercial','residential','plate','far','coverage'].every(k=>String(h[k])===String(D[k]))&&JSON.stringify((h.units||[]).map(u=>[u.size,u.perFloor]))===JSON.stringify(D.units.map(u=>[u.size,u.perFloor]))&&h.groundAuto!==false;}
+if(st&&st.projects&&!st.started){const keep=st.projects.filter(p=>!legacySample(p));if(keep.length!==st.projects.length){const n=newProject();keep.unshift(n);st.projects=keep;st.cur=n.id;st.migrated=true;}}
 if(!st||!st.settings||!st.projects||!st.projects.length){const p=newProject();st={settings:C.clone(C.DEFAULT_SETTINGS),projects:[p],cur:p.id};}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st));}catch(e){}};
 if(!localStorage.getItem(KEY))save(); // persist the first project right away so files saved against its id survive a reload
@@ -10,7 +18,7 @@ const S=()=>st.settings,P=()=>st.projects.find(p=>p.id===st.cur)||st.projects[0]
 function parseNum(v){if(typeof v==='number')return isFinite(v)?v:0;let s=String(v==null?'':v).toLowerCase().replace(/rs\.?|pkr|₨/g,'').replace(/[,\s_']/g,'');if(!s)return 0;
  const m=s.match(/^(-?\d*\.?\d+)(crores?|cr|lakhs?|lacs?|lac|l|k|thousand|m|million|arab)?$/);if(!m)return 0;const mult={cr:1e7,crore:1e7,crores:1e7,lakh:1e5,lakhs:1e5,lac:1e5,lacs:1e5,l:1e5,k:1e3,thousand:1e3,m:1e6,million:1e6,arab:1e9}[m[2]]||1;return +m[1]*mult;}
 window.__parseNum=parseNum;
-const fmt=n=>C.pkr(n),num=v=>parseNum(v);
+const fmt=n=>C.pkr(n),num=v=>parseNum(v),numB=v=>String(v==null?'':v).trim()===''?'':parseNum(v);
 $('#rDate').textContent=C.RATES_DATE;const APP=window.APP_NAME||'Construction Calculator';document.title=APP;document.querySelectorAll('.appName').forEach(e=>e.textContent=APP);
 const MQ=matchMedia('(max-width:760px)');const fitBar=()=>{const tb=$('#totBar');tb.style.bottom=MQ.matches?document.querySelector('nav').offsetHeight+'px':'';document.body.style.paddingBottom=MQ.matches?(document.querySelector('nav').offsetHeight+tb.offsetHeight+12)+'px':'';};addEventListener('resize',fitBar);MQ.addEventListener('change',()=>renderAll());const openK=new Set();
 // ---------- tabs ----------
@@ -19,7 +27,7 @@ document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.query
 function renderProjSel(){$('#projSel').innerHTML=st.projects.map(p=>`<option value="${p.id}" ${p.id===P().id?'selected':''}>${esc(T(p))}</option>`).join('');}
 function T(p){const n=String(p.plotNo||'').trim();if(!n)return p.name;const lab=/^plot\b/i.test(n)?n:'Plot '+n;return p.name&&p.name.toLowerCase().includes(n.toLowerCase())?p.name:lab+' – '+p.name;}window.__title=()=>T(P());
 $('#projSel').onchange=e=>{st.cur=e.target.value;save();loadInputs();renderAll();};
-$('#newP').onclick=()=>{const p=newProject('Project '+(st.projects.length+1));st.projects.push(p);st.cur=p.id;save();loadInputs();renderAll();};
+$('#newP').onclick=()=>{const p=newProject('Project '+(st.projects.length+1));st.projects.push(p);st.cur=p.id;save();loadInputs();renderAll();startShow();};
 $('#dupP').onclick=()=>{const p=C.clone(P());p.id='p'+Date.now();p.name+=' (copy)';st.projects.push(p);st.cur=p.id;save();loadInputs();renderAll();};
 $('#delP').onclick=()=>{if(!confirm('Delete "'+T(P())+'"?'))return;st.projects=st.projects.filter(p=>p.id!==P().id);if(!st.projects.length)st.projects.push(newProject());st.cur=st.projects[0].id;save();loadInputs();renderAll();};
 // ---------- estimate inputs ----------
@@ -28,7 +36,7 @@ function loadInputs(){const p=P();applyMode&&setTimeout(applyMode);$('#pName').v
 function renderFloorOv(){const p=P(),n=Math.max(1,Math.floor(num(p.floors)||1));$('#floorOv').innerHTML=p.override?'<div class="row" style="flex-wrap:wrap">'+Array.from({length:n},(_,i)=>`<label style="min-width:120px">${i?'Floor '+i:'Ground'} (sq ft)<input type="text" inputmode="decimal" autocomplete="off" min="0" data-fo="${i}" value="${p.floorAreas[i]!=null?p.floorAreas[i]:p.bua}"></label>`).join('')+'</div>':'';}
 $('#estimate').addEventListener('input',e=>{const t=e.target,p=P();
  if(t.id==='pName'){p.name=t.value;renderProjSel();}
- else if(F.includes(t.id)){const old=p[t.id];p[t.id]=t.tagName==='SELECT'?t.value:num(t.value);
+ else if(F.includes(t.id)){const old=p[t.id];p[t.id]=t.tagName==='SELECT'?t.value:numB(t.value);
   if(t.id==='plotPriceMode')convertPriceMode(p,old,'#plotPrice');if(t.id==='plotUnit')convertUnit(p,old,'#plotArea','#plotPrice',x=>C.unitSqft(x,S()));
   if(t.id==='floors'){if(p.floors>20){p.floors=20;t.value=20;}renderFloorOv();}moneyHints();}
  else if(t.id==='override'){p.override=t.checked;renderFloorOv();}
@@ -122,7 +130,7 @@ $('#impJ').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileR
 function renderAll(){renderProjSel();if(window.LAY)LAY.refresh();const tab=document.querySelector('.tab.on').id;renderEstimate();if(tab==='boq')renderBOQ();if(tab==='drawings')renderDrawings();if(tab==='schedule')renderSchedule();if(tab==='settings')renderSettings();}
 // ---------- High-rise mode ----------
 const H=window.HR;
-function ensureHR(p){if(!p.hr)p.hr=C.clone(H.DEFAULT_HR);for(const k in H.DEFAULT_HR)if(p.hr[k]==null)p.hr[k]=C.clone(H.DEFAULT_HR[k]);}
+function ensureHR(p){if(!p.hr)p.hr=C.clone(H.EMPTY_HR);for(const k in H.DEFAULT_HR)if(p.hr[k]==null)p.hr[k]=C.clone(H.DEFAULT_HR[k]);}
 function ensureRates(){S().hr=Object.assign(C.clone(H.HR_RATES),S().hr||{});}
 const n0=x=>Math.round(x).toLocaleString('en-US');
 const HF=[['🗺️ Plot & by-laws (sample values – check with LDA / SBCA / CDA)',[['plotArea','Plot area','n'],['plotUnit','Unit','u'],['plotW','Plot width ft (0 = auto)','n'],['plotD','Plot depth ft (0 = auto)','n'],['plotPrice','Plot price (Rs) – total or per sq yd/sq ft','m'],['plotPriceMode','Price is','pm'],['far','Allowed FAR (floor area ratio)','n'],['coverage','Max ground coverage %','n'],['setFront','Front setback ft','n'],['setRear','Rear setback ft','n'],['setSide','Side setback ft (each)','n'],['farExclParking','Exclude parking from FAR','b']]],
@@ -131,14 +139,15 @@ const HF=[['🗺️ Plot & by-laws (sample values – check with LDA / SBCA / CD
  ['🚗 Parking',[['carArea','Area per car incl. aisles (sq ft)','n'],['parkEff','Usable parking area %','n'],['commPark','Commercial sq ft per required car','n'],['lifts','Number of lifts (0 = auto)','n']]],
  ['💰 Selling price (optional)',[['sellRes','Residential selling price Rs / sq ft','m'],['sellComm','Commercial selling price Rs / sq ft','m']]]];
 const RF=[['basement','Basement Rs/sq ft'],['parking','Podium parking Rs/sq ft'],['commercial','Commercial Rs/sq ft'],['residential','Residential Rs/sq ft'],['heightPct','Height uplift % per floor'],['heightFrom','…above floor no.'],['structPct','High-rise structure surcharge %'],['structFrom','…when above-ground floors ≥'],['structShare','Structure share of floor rate %'],['liftCost','Lift cost each (Rs)'],['liftPerStop','Lift extra per stop (Rs)'],['unitsPerLift','Units per lift (auto)'],['minLifts','Minimum lifts'],['fire','Fire fighting Rs/sq ft gross'],['security','CCTV & security Rs/sq ft'],['kvaPerUnit','Generator kVA per unit'],['kvaPerCommSqft','kVA per commercial sq ft'],['kvaRate','Generator Rs per kVA'],['waterPerUnit','Water tanks/pumps Rs per unit'],['margin','Contractor margin %'],['contingency','Contingency %'],['designPct','Design & engineering %'],['approvals','Approvals / NOCs (Rs)'],['tax','Tax %']];
+const HPH={plotArea:'e.g. 1000',plotPrice:'e.g. 15 crore',basements:'e.g. 2',podium:'e.g. 1',commercial:'e.g. 2',residential:'e.g. 12',plate:'auto',groundArea:'auto',plotW:'auto',plotD:'auto',lifts:'auto',sellRes:'optional',sellComm:'optional'};
 function fld(k,l,t,v){if(t==='u')return `<label>${l}<select data-h="${k}"><option value="sqyd" ${v==='sqyd'?'selected':''}>sq yd</option><option value="sqft" ${v==='sqft'?'selected':''}>sq ft</option></select></label>`;
  if(t==='pm')return `<label>${l}<select data-h="${k}"><option value="total" ${v==='total'?'selected':''}>Total</option><option value="perunit" ${v==='perunit'?'selected':''}>Per unit area</option></select></label>`;
  if(t==='b')return `<label class="chk"><input type="checkbox" data-h="${k}" ${v?'checked':''}> ${l}</label>`;
- const dis=(k==='groundArea'&&P().hr.groundAuto!==false)?' disabled':'';return `<label>${l}<input type="text" inputmode="decimal" autocomplete="off" data-h="${k}" value="${v}"${t==='m'?' class="money"':''}${dis}></label>`;}
+ const dis=(k==='groundArea'&&P().hr.groundAuto!==false)?' disabled':'';return `<label>${l}<input type="text" inputmode="decimal" autocomplete="off" data-h="${k}" value="${v}"${HPH[k]?` placeholder="${HPH[k]}"`:''}${t==='m'?' class="money"':''}${dis}></label>`;}
 function renderCommFields(){const box=$('#commFields');if(!box)return;const h=P().hr,n=h.commercial|0;if(h.commAuto!==false||!n){box.innerHTML='';return;}h.commAreas=h.commAreas||[];const pl=Math.round(C.estimate(P(),S()).plate);box.innerHTML='<div class="fgrid">'+Array.from({length:n},(_,i)=>`<label>Commercial floor ${i+1} built area, sq ft<input type="text" inputmode="decimal" autocomplete="off" data-ca="${i}" value="${h.commAreas[i]>0?h.commAreas[i]:pl}"></label>`).join('')+'</div>';}
 function renderHRIn(){const p=P();ensureHR(p);ensureRates();const h=p.hr,R=S().hr;
  let x=HF.map(([t,fs],i)=>`<details class="card hrg" ${i<2?'open':''}><summary><h2>${t}</h2></summary><div class="fgrid">${fs.map(f=>fld(f[0],f[1],f[2],h[f[0]])).join('')}</div>${i===1?'<div id="commFields"></div>':''}</details>`).join('');
- x+=`<details class="card hrg" open><summary><h2>🏠 Unit mix per floor</h2></summary><p class="sub">Units on every typical floor. Types marked "top floor" go only on the top (penthouse) floor.</p><div id="umix">`+h.units.map((u,i)=>`<div class="ucard" data-u="${i}"><div class="fgrid"><label>Name<input data-uf="name" value="${esc(u.name)}"></label><label>Bedrooms<input type="text" inputmode="decimal" autocomplete="off" min="0" max="6" data-uf="beds" value="${u.beds}"></label><label>Size sq ft<input type="text" inputmode="decimal" autocomplete="off" min="0" data-uf="size" value="${u.size}"></label><label>Units per floor<input type="text" inputmode="decimal" autocomplete="off" min="0" data-uf="perFloor" value="${u.perFloor}"></label><label>Car spaces per unit<input type="text" inputmode="decimal" autocomplete="off" step="any" min="0" data-uf="park" value="${u.park}"></label><label class="chk"><input type="checkbox" data-uf="top" ${u.top?'checked':''}> Top floor only</label></div><button class="mini danger" data-udel="${i}">🗑️ Remove type</button></div>`).join('')+`</div><button id="uAdd">➕ Add unit type</button> <button id="uReset">↩️ Default mix</button></details>`;
+ x+=`<details class="card hrg" open><summary><h2>🏠 Unit mix per floor</h2></summary><p class="sub">Units on every typical floor. Types marked "top floor" go only on the top (penthouse) floor.</p><div id="umix">`+h.units.map((u,i)=>`<div class="ucard" data-u="${i}"><div class="fgrid"><label>Name<input data-uf="name" value="${esc(u.name)}"></label><label>Bedrooms<input type="text" inputmode="decimal" autocomplete="off" min="0" max="6" data-uf="beds" value="${u.beds}"></label><label>Size sq ft<input type="text" inputmode="decimal" autocomplete="off" min="0" data-uf="size" value="${u.size}" placeholder="e.g. 1200"></label><label>Units per floor<input type="text" inputmode="decimal" autocomplete="off" min="0" data-uf="perFloor" value="${u.perFloor}" placeholder="e.g. 4"></label><label>Car spaces per unit<input type="text" inputmode="decimal" autocomplete="off" step="any" min="0" data-uf="park" value="${u.park}"></label><label class="chk"><input type="checkbox" data-uf="top" ${u.top?'checked':''}> Top floor only</label></div><button class="mini danger" data-udel="${i}">🗑️ Remove type</button></div>`).join('')+`</div><button id="uAdd">➕ Add unit type</button> <button id="uReset">↩️ Default mix</button></details>`;
  x+=`<details class="card hrg"><summary><h2>⚙️ High-rise rates (sample, editable)</h2></summary><p class="sub">Approximate 2026 planning figures (see sources.md). Shared by all high-rise projects.</p><div class="fgrid">${RF.map(([k,l])=>`<label>${l}<input type="text" inputmode="decimal" autocomplete="off" step="any" data-r="${k}" value="${R[k]}"></label>`).join('')}</div><button id="rReset">↩️ Reset high-rise rates</button></details>`;
  $('#hrIn').innerHTML=x;renderCommFields();moneyHints();}
 function renderHROut(){const p=P();ensureHR(p);ensureRates();const e=C.estimate(p,S()),h=p.hr;
@@ -157,12 +166,12 @@ function renderHROut(){const p=P();ensureHR(p);ensureRates();const e=C.estimate(
 $('#modeSel').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;P().mode=b.dataset.mode;ensureHR(P());save();applyMode();renderAll();};
 function applyMode(){const hr=P().mode==='highrise';$('#houseEst').hidden=hr;$('#hrEst').hidden=!hr;document.querySelectorAll('#modeSel button').forEach(b=>b.classList.toggle('on',b.dataset.mode===(hr?'highrise':'house')));if(hr)renderHRIn();}
 $('#hrIn').addEventListener('input',e=>{const t=e.target,p=P(),h=p.hr;
- if(t.dataset.h){const k=t.dataset.h,old=h[k];h[k]=t.type==='checkbox'?t.checked:t.tagName==='SELECT'?t.value:num(t.value);if(['basements','podium','commercial','residential'].includes(k))h.qTotal=0;if(k==='plate'||k==='groundArea')qKey='';
+ if(t.dataset.h){const k=t.dataset.h,old=h[k];h[k]=t.type==='checkbox'?t.checked:t.tagName==='SELECT'?t.value:numB(t.value);if(['basements','podium','commercial','residential'].includes(k))h.qTotal=0;if(k==='plate'||k==='groundArea')qKey='';
   if(k==='plotPriceMode')convertPriceMode(h,old,'#hrIn [data-h=plotPrice]');if(k==='plotUnit')convertUnit(h,old,'#hrIn [data-h=plotArea]','#hrIn [data-h=plotPrice]',x=>x==='sqyd'?9:1);
   if(k==='groundAuto'||k==='commAuto'){const e0=C.estimate(P(),S());if(k==='groundAuto'&&!h.groundAuto&&!(h.groundArea>0))h.groundArea=Math.round(e0.plate);if(k==='commAuto'&&!h.commAuto)h.commAreas=Array.from({length:h.commercial|0},(_,i)=>h.commAreas&&h.commAreas[i]>0?h.commAreas[i]:Math.round(e0.plate));save();renderHRIn();renderHROut();return;}
   if(k==='commercial'&&!h.commAuto){h.commAreas=h.commAreas||[];while(h.commAreas.length<(h.commercial|0))h.commAreas.push(Math.round(C.estimate(P(),S()).plate));save();renderHROut();clearTimeout(window.__cf);window.__cf=setTimeout(renderCommFields,400);return;}moneyHints();}
  else if(t.dataset.ca!=null){h.commAreas[+t.dataset.ca]=num(t.value);}
- else if(t.dataset.uf){const u=h.units[+t.closest('[data-u]').dataset.u],f=t.dataset.uf;u[f]=t.type==='checkbox'?t.checked:f==='name'?t.value:num(t.value);}
+ else if(t.dataset.uf){const u=h.units[+t.closest('[data-u]').dataset.u],f=t.dataset.uf;u[f]=t.type==='checkbox'?t.checked:f==='name'?t.value:numB(t.value);}
  else if(t.dataset.r){S().hr[t.dataset.r]=num(t.value);}else return;save();renderHROut();});
 $('#hrIn').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const h=P().hr;
  if(b.dataset.udel!=null)h.units.splice(+b.dataset.udel,1);else if(b.id==='uAdd')h.units.push({id:'u'+Date.now(),name:'Custom unit',beds:2,size:1000,perFloor:1,park:1});
@@ -175,29 +184,26 @@ let qKey='';const adv=$('#adv');try{if(localStorage.getItem('cc-adv')==='1')adv.
 adv.addEventListener('toggle',()=>{try{localStorage.setItem('cc-adv',adv.open?'1':'0');}catch(e){}if(adv.open&&P().mode==='highrise')renderHRIn();});
 const qi=(l,a,v,x)=>`<label>${l}<input type="text" ${x&&x.text?'':'inputmode="decimal"'} autocomplete="off" ${a} value="${esc(v)}"${x&&x.money?' class="money"':''}${x&&x.ph?` placeholder="${esc(x.ph)}"`:''}></label>`;
 const qs=(l,a,opts,v)=>`<label>${l}<select ${a}>${opts.map(([k,t])=>`<option value="${k}" ${k===v?'selected':''}>${t}</option>`).join('')}</select></label>`;
-function buildQuick(){const p=P(),hr=p.mode==='highrise';let x=`<div class="qhead"><h2>⚡ Quick entry</h2><button type="button" id="qUp" class="mini">📎 Upload layout</button></div><p class="sub">Type the main numbers here. Results update instantly below. Everything else is under <b>Advanced settings</b>.</p><div class="qgrid">`;
+function buildQuick(){const p=P(),hr=p.mode==='highrise';let x=`<div class="qhead"><h2>⚡ Quick entry</h2><span class="qbtns"><button type="button" id="clearP" class="mini">🧹 Clear inputs</button><button type="button" id="qUp" class="mini">📎 Upload layout</button></span></div><p class="sub">Type the main numbers here. Results update instantly below. Everything else is under <b>Advanced settings</b>.</p><div class="qgrid">`;
  x+=qi('Plot number / name','data-q="plotNo"',p.plotNo||'',{text:1,ph:'e.g. SB-12, Block 7'});
  if(hr){ensureHR(p);const h=p.hr,U=[['sqyd','sq yd'],['sqft','sq ft']];
-  x+=`<div class="qpair">`+qi('Plot size','data-qh="plotArea"',h.plotArea)+qs('Unit','data-qh="plotUnit"',U,h.plotUnit)+`</div>`;
-  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qh="plotPrice"',h.plotPrice,{money:1})+qs('Price is','data-qh="plotPriceMode"',[['total','Total'],['perunit','Per '+(h.plotUnit==='sqft'?'sq ft':'sq yd')]],h.plotPriceMode)+`</div>`;
-  x+=qi('Total floors (incl. basements)','data-qf="total"','')+qi('Basement parking floors','data-qf="basements"','')+qi('Podium parking floors (above ground)','data-qf="podium"','');
-  x+=qs('Ground floor use','data-qf="groundUse"',H.GUSES,h.groundUse||'parking')+qi('Commercial floors (incl. ground if shops)','data-qf="commercial"','');
-  x+=qi('Ground floor plate (sq ft)','data-qf="groundArea"','',{ph:'auto'})+qi('Upper / typical floor plate (sq ft)','data-qf="plate"','',{ph:'auto'});
-  x+=`<div class="qres" id="qRes"></div></div><details class="qunits"><summary>🏠 Residential unit sizes (optional)</summary><div class="qgrid">`+h.units.map((u,i)=>qi(esc(u.name)+(u.top?' (top floor)':'')+' – sq ft','data-qu="'+i+'"',u.size)+qi('…units per floor','data-qp="'+i+'"',u.perFloor)).join('')+`</div></details>`;}
+  x+=`<div class="qpair">`+qi('Plot size','data-qh="plotArea"',h.plotArea,{ph:'e.g. 1000'})+qs('Unit','data-qh="plotUnit"',U,h.plotUnit)+`</div>`;
+  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qh="plotPrice"',h.plotPrice,{money:1,ph:'e.g. 15 crore'})+qs('Price is','data-qh="plotPriceMode"',[['total','Total'],['perunit','Per '+(h.plotUnit==='sqft'?'sq ft':'sq yd')]],h.plotPriceMode)+`</div>`;
+  x+=`</div>`+stackHTML(h);}
  else{const U=[['sqyd','sq yd'],['sqft','sq ft']];if(p.plotUnit==='marla')U.push(['marla','marla']);
-  x+=`<div class="qpair">`+qi('Plot size','data-qa="plotArea"',p.plotArea)+qs('Unit','data-qa="plotUnit"',U,p.plotUnit)+`</div>`;
-  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qa="plotPrice"',p.plotPrice,{money:1})+qs('Price is','data-qa="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],p.plotPriceMode)+`</div>`;
-  x+=qi('Number of floors','data-qa="floors"',p.floors)+qi('Covered area per floor (sq ft)','data-qa="bua"',p.bua)+qs('Quality','data-qa="quality"',[['A','A (premium)'],['B','B (standard)'],['C','C (economy)']],p.quality)+`</div>`;}
- x+=`<div id="qSum" class="qsum" aria-live="polite"></div>`;$('#quick').innerHTML=x;qKey=p.id+p.mode+(hr?p.hr.units.length:'');moneyHints();}
-function syncQuick(){const p=P();if(qKey!==p.id+p.mode+(p.mode==='highrise'&&p.hr?p.hr.units.length:''))buildQuick();const a=document.activeElement,set=(el,v)=>{if(el&&el!==a&&el.value!==String(v))el.value=v;};
+  x+=`<div class="qpair">`+qi('Plot size','data-qa="plotArea"',p.plotArea,{ph:'e.g. 200'})+qs('Unit','data-qa="plotUnit"',U,p.plotUnit)+`</div>`;
+  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qa="plotPrice"',p.plotPrice,{money:1,ph:'e.g. 1.5 crore'})+qs('Price is','data-qa="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],p.plotPriceMode)+`</div>`;
+  x+=qi('Number of floors','data-qa="floors"',p.floors,{ph:'e.g. 2'})+qi('Covered area per floor (sq ft)','data-qa="bua"',p.bua,{ph:'e.g. 1500'})+qs('Quality','data-qa="quality"',[['A','A (premium)'],['B','B (standard)'],['C','C (economy)']],p.quality)+`</div>`;}
+ x+=`<div id="qSum" class="qsum" aria-live="polite"></div>`;$('#quick').innerHTML=x;qKey=qk(p);moneyHints();}
+const qk=p=>p.id+p.mode+(p.mode==='highrise'&&p.hr?'b'+(+p.hr.basements|0):'');
+function syncQuick(){const p=P();if(qKey!==qk(p)){const ae=document.activeElement,fk=ae&&ae.dataset&&ae.dataset.qs;buildQuick();if(fk){const n=$(`#quick [data-qs="${fk}"]`);if(n){n.focus();try{n.setSelectionRange(n.value.length,n.value.length);}catch(e){}}}}const a=document.activeElement,set=(el,v)=>{if(el&&el!==a&&el.value!==String(v))el.value=v;};
  const e=C.estimate(p,S());set($('#quick [data-q=plotNo]'),p.plotNo||'');let s='';
- if(p.mode==='highrise'){const h=p.hr,q=H.quick(h);['plotArea','plotUnit','plotPrice','plotPriceMode'].forEach(k=>set($(`#quick [data-qh=${k}]`),h[k]));
-  ['total','basements','podium','commercial'].forEach(k=>set($(`#quick [data-qf=${k}]`),q[k]));set($('#quick [data-qf=groundUse]'),h.groundUse||'parking');
-  const g=$('#quick [data-qf=groundArea]'),pl=$('#quick [data-qf=plate]'),auto=Math.round(e.g.plate);set(g,h.groundAuto===false&&+h.groundArea>0?h.groundArea:'');set(pl,+h.plate>0?h.plate:'');g.placeholder='auto ≈ '+n0(auto);pl.placeholder='auto ≈ '+n0(auto);
-  h.units.forEach((u,i)=>{set($(`#quick [data-qu="${i}"]`),u.size);set($(`#quick [data-qp="${i}"]`),u.perFloor);});
-  $('#qRes').innerHTML=`🏠 Residential floors = ${q.total} − ${q.parking} parking − ${q.commercial} commercial = <b data-qres>${q.residential}</b>`+(q.short?`<span class="mhint bad">Total is ${q.short} floor(s) short: add floors or reduce parking / commercial.</span>`:'');
-  const pill=(l,v,sb)=>`<div class="pill">${l}<b>${v}</b>${sb?`<small>${sb}</small>`:''}</div>`;
-  s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills">`+pill('Floors',e.totalFloors,`${e.nB} basement · ${e.nP} podium · ${e.nC} commercial · ${e.nR} residential`)+pill('Ground floor',n0(e.ground)+' sq ft',(h.groundAuto===false?'typed':'auto')+' · '+(e.floors.find(f=>f.lvl===0)||{label:'—'}).label)+pill('Typical plate',n0(e.plate)+' sq ft',+h.plate>0?'typed':'auto from plot')+pill('Gross built-up',n0(e.gross)+' sq ft')+pill('Units',e.totalUnits,n0(e.resSell)+' sq ft sellable')+pill('Building cost',C.words(e.buildTotal),fmt(e.perSellable)+' / sellable sq ft')+pill('Plot',C.words(e.plot))+pill('Parking',`${e.provided} / ${e.required}`,e.provided>=e.required?'✅ enough':'⚠️ short')+`</div>`+e.warnings.slice(0,3).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
+ if(p.mode==='highrise'){const h=p.hr;['plotArea','plotUnit','plotPrice','plotPriceMode'].forEach(k=>set($(`#quick [data-qh=${k}]`),h[k]));
+  Object.entries(stackVals(h)).forEach(([k,v])=>set($(`#quick [data-qs="${k}"]`),v));
+  const auto=Math.round(e.g.plate);document.querySelectorAll('#quick .dimA').forEach(el=>{const d=H.parseDim(el.value);const o=el.parentElement.querySelector('.dimOut');if(o)o.textContent=d?(d.L?`= ${n0(d.area)} sq ft`:`${n0(d.area)} sq ft`):(el.value.trim()?'⚠️ type 60x80 or 4800':'');});
+  const rp=$('#quick [data-qs=rDim]');if(rp)rp.placeholder='60x80 or 4800 (auto ≈ '+n0(auto)+')';
+  const us=$('#quick [data-qs=usize]');if(us){const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);us.placeholder=h.uSizeAuto&&e.unitRows[0]?'auto ≈ '+n0(e.unitRows[0].size)+' sq ft':u.length>1?'mixed (see Advanced)':'auto = plate − core ÷ units';}
+  s=stackSummary(p,e);}
  else{F.forEach(k=>set($(`#quick [data-qa=${k}]`),p[k]));
   s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills"><div class="pill">Covered area<b>${n0(e.totalArea)} sq ft</b></div><div class="pill">Building<b>${C.words(e.buildTotal)}</b><small>${fmt(e.perSqft)} / sq ft</small></div><div class="pill">Plot<b>${C.words(e.plot)}</b></div></div>`;}
  $('#qSum').innerHTML=s;}
@@ -206,12 +212,67 @@ $('#quick').addEventListener('input',ev=>{const t=ev.target,p=P(),d=t.dataset,v=
  const fwd=(sel)=>{const el=$(sel);if(!el)return false;el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));return true;};
  if(d.qa){if(!fwd('#'+d.qa)){p[d.qa]=t.tagName==='SELECT'?v:num(v);save();renderEstimate();}return;}
  if(d.qh){if(!$(`#hrIn [data-h=${d.qh}]`))renderHRIn();fwd(`#hrIn [data-h=${d.qh}]`);if(d.qh==='plotUnit')buildQuick();syncQuick();return;}
- const h=p.hr;if(d.qf){if(t.tagName!=='SELECT'&&d.qf!=='groundArea'&&d.qf!=='plate'&&t.value.trim()==='')return;H.quickSet(h,d.qf,t.tagName==='SELECT'?v:num(v));}
- else if(d.qu!=null)h.units[+d.qu].size=num(v);else if(d.qp!=null)h.units[+d.qp].perFloor=num(v);else return;
+ const h=p.hr;if(d.qs!=null)stackSet(h,d.qs,v);else return;
  save();if(adv.open)renderHRIn();renderHROut();});
 $('#quick').addEventListener('click',e=>{if(e.target.closest('#qUp')){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}});
-$('#quick').addEventListener('change',e=>{if(e.target.dataset.qf)syncQuick();});
-{const rE=renderEstimate;renderEstimate=function(){rE();syncQuick();};}
+$('#quick').addEventListener('change',e=>{if(e.target.dataset.qs!=null)syncQuick();});
+const pos=v=>num(v)>0;
+// ---------- Building stack builder (bottom to top) ----------
+const dimF=(l,k,ph)=>`<label>${l}<input type="text" autocomplete="off" class="dimA" data-qs="${k}" placeholder="${ph||'60x80 or 4800'}"><small class="dimOut"></small></label>`;
+const numF=(l,k,ph)=>qi(l,`data-qs="${k}"`,'',{ph});
+function stackHTML(h){const nB=+h.basements|0;let x=`<ol class="stack">`;
+ x+=`<li><h3>1 · Basements</h3><div class="qgrid">${numF('How many basements?','bN','0, 1, 2…')}${Array.from({length:Math.min(nB,8)},(_,i)=>dimF(`Basement ${i+1} – L x W ft or sq ft`,'b'+i,i?'same as B1':'60x80 or 4800')).join('')}</div></li>`;
+ x+=`<li><h3>2 · Ground floor – shops for sale</h3><div class="qgrid">${dimF('Ground floor – L x W ft or sq ft','gDim')}${numF('Number of shops','shops','e.g. 6')}${qi('Shop sizes sq ft (optional)','data-qs="shopList"','',{text:1,ph:'auto split, or 300, 450, 500'})}</div></li>`;
+ x+=`<li><h3>3 · Parking floors above ground</h3><div class="qgrid">${numF('How many parking floors?','pN','0, 1, 2…')}${dimF('Parking floor – L x W ft or sq ft','pDim','same as residential')}</div></li>`;
+ x+=`<li><h3>4 · Residential floors</h3><div class="qgrid">${numF('How many residential floors?','rN','e.g. 12')}${dimF('Floor plate – L x W ft or sq ft','rDim')}${numF('Flats per floor','upf','e.g. 4')}${numF('Flat size sq ft','usize','auto')}</div></li></ol>`;return x;}
+function stackVals(h){const sh=(dim,area,ok)=>{const a=+area>0&&ok!==false?+area:0;return dim&&H.dimA(dim)===a&&a?dim:(a?a:'');};const o={bN:h.basements===''||h.basements==null?'':+h.basements|0};
+ for(let i=0;i<(+h.basements|0);i++)o['b'+i]=sh((h.bDims||[])[i],(h.bAreas||[])[i]);
+ o.gDim=sh(h.gDim,h.groundArea,h.groundAuto!==false);o.shops=h.shops||'';o.shopList=h.shopList||'';o.pN=h.podium===''||h.podium==null?'':+h.podium|0;o.pDim=sh(h.pDim,h.parkArea);o.rN=h.residential===''||h.residential==null?'':+h.residential|0;o.rDim=sh(h.rDim,h.plate);
+ const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);o.upf=u.length?u.reduce((a,t)=>a+(+t.perFloor),0):'';o.usize=!h.uSizeAuto&&u.length===1&&+u[0].size>0?u[0].size:'';return o;}
+function stackSet(h,k,v){const n=numB(v);h.qTotal=0;
+ if(k==='bN'){h.basements=n===''?'':Math.min(8,Math.max(0,n|0));}
+ else if(/^b\d+$/.test(k)){const i=+k.slice(1);(h.bDims=h.bDims||[])[i]=v;(h.bAreas=h.bAreas||[])[i]=H.dimA(v)||'';}
+ else if(k==='gDim'){h.gDim=v;const a=H.dimA(v);h.groundAuto=!(a>0);h.groundArea=a||0;if(a>0){h.groundUse='commercial';if(!(+h.commercial>0))h.commercial=1;}}
+ else if(k==='shops'){h.shops=n;if(n>0){h.groundUse='commercial';if(!(+h.commercial>0))h.commercial=1;}}
+ else if(k==='shopList')h.shopList=v;
+ else if(k==='pN')h.podium=n===''?'':Math.max(0,n|0);
+ else if(k==='pDim'){h.pDim=v;h.parkArea=H.dimA(v)||0;}
+ else if(k==='rN')h.residential=n===''?'':Math.max(0,n|0);
+ else if(k==='rDim'){h.rDim=v;h.plate=H.dimA(v)||0;}
+ else if(k==='upf'||k==='usize'){const cur=stackVals(h),upf=k==='upf'?n:cur.upf,us=k==='usize'?n:cur.usize;h.units=[{id:'apt',name:'Flat',beds:2,size:us===''?'':us,perFloor:upf===''?'':upf,park:1}];h.uSizeAuto=us==='';}
+ if(h.groundUse==='commercial'&&!(+h.podium>0)&&h.podium!=='')h.podium=+h.podium|0;}
+function stackSummary(p,e){const h=p.hr,L=[];let last=null;
+ e.floors.slice().sort((a,b)=>a.lvl-b.lvl).forEach(f=>{const t=f.type==='commercial'&&f.lvl===0?'shops':f.type,k=t+'|'+Math.round(f.area);if(last&&last.k===k){last.n++;last.to=f.label;}else{last={k,t,n:1,from:f.label,to:f.label,area:f.area};L.push(last);}});
+ const ico={basement:'🅿️',parking:'🚗',shops:'🛍️',commercial:'🏬',residential:'🏠'};
+ const shops=H.shopSizes(h);const ur=e.unitRows.filter(u=>u.count>0);
+ return `<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot · building ${C.words(e.buildTotal)}${e.gross?' · '+fmt(e.buildTotal/e.gross)+' / sq ft':''}</small></div>
+ <div class="rlist stackSum">`+L.slice().reverse().map(g=>`<div class="rrow"><b>${ico[g.t]||''} ${esc(g.n>1?g.from+' – '+g.to:g.from)}</b><span>${g.n>1?g.n+' × ':''}${n0(g.area)} sq ft</span><em>${n0(g.area*g.n)} sq ft</em></div>`).join('')+
+ (shops.length?`<div class="rrow"><b>🛍️ Shops</b><span>${shops.length} shops: ${shops.map(n0).join(', ')} sq ft</span><em>${n0(shops.reduce((a,b)=>a+b,0))} sq ft</em></div>`:'')+
+ `<div class="rrow"><b>🏠 Flats</b><span>${ur.length?ur.map(u=>`${u.perFloor}/floor × ${u.floors} floors · ${n0(u.size)} sq ft each`).join('; '):'add flats per floor'}</span><em data-qunits>${e.totalUnits} flats</em></div>
+ <div class="rrow tot"><b>Gross built-up area</b><span>${e.totalFloors} levels</span><em data-qgross>${n0(e.gross)} sq ft</em></div><div class="rrow tot"><b>Total cost</b><span>building + plot</span><em>${fmt(e.grand)}</em></div></div>`+e.warnings.slice(0,2).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
+window.__stack={stackSet,stackVals};
+// ---------- start screen (first open + New) ----------
+function startShow(){$('#start').hidden=false;$('#stBody').innerHTML=`<p class="sub">Step 1 of 2 · What are you planning?</p><div class="stChoices"><button data-st="highrise" class="stBig">🏢 Building<small>Apartments, shops, parking</small></button><button data-st="house" class="stBig">🏠 House<small>Single house / ghar</small></button></div>`;}
+function startStep2(){$('#stBody').innerHTML=`<p class="sub">Step 2 of 2 · How do you want to start?</p><div class="stChoices"><button data-st2="up" class="stBig accent">📎 Upload drawing<small>Photo, scan or PDF – I read it for you</small></button><button data-st2="man" class="stBig">✍️ Manual entry<small>Type the sizes step by step</small></button></div><button class="mini" data-st="back">← Back</button>`;}
+$('#start').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.st==='back')return startShow();
+ if(b.dataset.st){let p=P();if(!isEmpty(p)){p=newProject('Project '+(st.projects.length+1));st.projects.push(p);st.cur=p.id;}p.mode=b.dataset.st;if(p.mode==='highrise')ensureHR(p);st.started=true;save();loadInputs();applyMode();renderAll();startStep2();return;}
+ if(b.dataset.st2){$('#start').hidden=true;document.querySelector('nav [data-tab=estimate]').click();
+  if(b.dataset.st2==='up'){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}
+  else setTimeout(()=>{const f=$('#quick [data-qs=bN]')||$('#quick [data-qa=plotArea]');if(f){f.scrollIntoView({block:'center'});f.focus();}},60);}
+ if(b.id==='stX'){$('#start').hidden=true;st.started=true;save();}});
+window.__startShow=startShow;
+function isEmpty(p){p=p||P();if(p.mode==='highrise'){const h=p.hr||{};return !['plotArea','plotPrice','basements','podium','commercial','residential','plate','groundArea','shops','parkArea'].some(k=>pos(h[k]))&&!(+h.qTotal>0)&&!(h.units||[]).some(u=>pos(u.size)&&pos(u.perFloor));}
+ return !['plotArea','plotPrice','floors','bua'].some(k=>pos(p[k]))&&!(p.override&&(p.floorAreas||[]).some(pos));}
+const EMSG='Enter your plot and floors, or upload a layout to start';
+function applyEmpty(){const e=isEmpty();document.body.classList.toggle('isEmpty',e);if(!e)return;
+ $('#tbGrand').textContent='';$('#tbWords').textContent=EMSG;if($('#warn'))$('#warn').innerHTML='';
+ const q=$('#qSum');if(q)q.innerHTML=`<div class="qempty">📝 ${EMSG}. Results appear here as you type.</div>`;}
+window.__isEmpty=()=>isEmpty();
+document.addEventListener('click',e=>{const b=e.target.closest('.goQuick,.goUp,#clearP');if(!b)return;
+ if(b.id==='clearP'){if(!confirm('Clear all inputs of "'+T(P())+'"? Rates and settings stay. The uploaded layout is kept.'))return;const p=P(),n=newProject(p.name);n.id=p.id;n.mode=p.mode;st.projects[st.projects.indexOf(p)]=n;if(n.mode==='highrise')ensureHR(n);save();qKey='';loadInputs();renderAll();if(n.mode==='highrise')renderHRIn();return;}
+ document.querySelector('nav [data-tab=estimate]').click();if(b.classList.contains('goUp')){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}else setTimeout(()=>{const f=$('#quick input');if(f){f.scrollIntoView({block:'center'});f.focus();}},50);});
+{const rE=renderEstimate;renderEstimate=function(){rE();syncQuick();applyEmpty();};}
 {const rO=renderHROut;renderHROut=function(){rO();syncQuick();};}
 // layout uploads live in IndexedDB (not localStorage) so big PDFs/images fit
 function idb(op,key,val){return new Promise((res,rej)=>{try{if(!window.indexedDB)return rej('no idb');const r=indexedDB.open('constructcalc',1);r.onupgradeneeded=()=>r.result.createObjectStore('layouts');r.onerror=()=>rej(r.error);r.onblocked=()=>rej('blocked');
@@ -251,4 +312,4 @@ $('#installBtn').onclick=async()=>{if(!defP)return;defP.prompt();await defP.user
 $('#ihClose').onclick=()=>{$('#installHint').hidden=true;st.hintClosed=true;save();};
 if(!standalone&&!st.hintClosed&&MQ.matches){if(/iphone|ipad|ipod/i.test(navigator.userAgent))$('#ihText').textContent='To install: tap the Share button, then "Add to Home Screen".';else $('#ihText').textContent='Install: open the browser menu ⋮ and choose "Add to Home screen" / "Install app".';$('#installHint').hidden=false;}
 window.__app={st:()=>st,renderAll,wizOpen,P,S,save,loadInputs,ensureHR,idb,applyMode,fmt,num,esc};
-loadInputs();renderAll();fitBar();if(!st.wizDone&&!navigator.webdriver)setTimeout(wizOpen,300);})();
+loadInputs();renderAll();fitBar();if(!st.started){const p=P();if(!isEmpty(p)){const n=newProject();st.projects.unshift(n);st.cur=n.id;loadInputs();renderAll();}startShow();}save();})();

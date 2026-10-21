@@ -26,14 +26,26 @@ const DEFAULT_HR={plotArea:1000,plotUnit:'sqyd',plotW:0,plotD:0,plotPrice:150000
  basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commEff:75,
  units:UNIT_TYPES,commPark:1000,carArea:320,parkEff:85,lifts:0,
  sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[],groundUse:'parking',qTotal:0};
+// fresh projects start blank: only rates / by-law coefficients keep defaults
+const BLANK_KEYS=['plotArea','plotW','plotD','plotPrice','basements','podium','commercial','residential','plate','groundArea','sellRes','sellComm','lifts'];
+const EMPTY_HR=Object.assign(clone(DEFAULT_HR),Object.fromEntries(BLANK_KEYS.map(k=>[k,''])),{groundUse:'',qTotal:0,commAreas:[],units:UNIT_TYPES.map(u=>Object.assign(clone(u),{size:'',perFloor:''}))});
 const SQ={sqyd:9,sqft:1};
 function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.plotW,D=+h.plotD;
- if(W>0&&!(D>0))D=plotSqft/W;else if(D>0&&!(W>0))W=plotSqft/D;else if(!(W>0&&D>0)){W=Math.sqrt(plotSqft/1.5);D=plotSqft/W;} // one dimension given: derive the other from the area // assume 1:1.5 plot if dims not given
+ if(W>0&&!(D>0))D=plotSqft/W;else if(D>0&&!(W>0))W=plotSqft/D;else if(!(W>0&&D>0)){W=Math.sqrt(plotSqft/1.5);D=W>0?plotSqft/W:0;} // one dimension given: derive the other from the area // assume 1:1.5 plot if dims not given
  const bw=Math.max(0,W-2*h.setSide),bd=Math.max(0,D-h.setFront-h.setRear);
  const footprint=bw*bd,covMax=plotSqft*h.coverage/100,autoPlate=Math.min(footprint,covMax);
  const plate=+h.plate>0?+h.plate:autoPlate;
  return{plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
-function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});const g=geom(h),w=[],plate=g.plate;
+// "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
+function parseDim(v){const t=String(v==null?'':v).toLowerCase().replace(/,/g,'').replace(/sq\.?\s*ft|sft|ft|['"’]/g,'').trim();if(!t)return null;
+ const m=t.match(/^(\d*\.?\d+)\s*[x×*by]+\s*(\d*\.?\d+)$/);if(m){const L=+m[1],W=+m[2];return L>0&&W>0?{L,W,area:L*W}:null;}
+ const n=t.match(/^\d*\.?\d+$/);return n&&+t>0?{area:+t}:null;}
+const dimA=v=>{const d=parseDim(v);return d?d.area:0;};
+// shop sizes: typed list "300, 450" or auto split of the sellable ground area
+function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=String(h.shopList||'').split(/[,;\s]+/).map(Number).filter(x=>x>0);
+ if(list.length)return list;if(!n||!g)return [];const eff=(+h.commEff||75)/100;return Array.from({length:n},()=>Math.round(g*eff/n));}
+function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
+ if(h.uSizeAuto&&(h.units||[]).length===1&&+h.units[0].perFloor>0){const pl0=geom(h).plate;h=Object.assign({},h,{units:[Object.assign({},h.units[0],{size:Math.round(pl0*(1-(+h.corePct||0)/100)/(+h.units[0].perFloor))})]});}const g=geom(h),w=[],plate=g.plate;
  const nB=Math.max(0,+h.basements|0),nP=Math.max(0,+h.podium|0),nC=Math.max(0,+h.commercial|0),nR=Math.max(0,+h.residential|0);
  const above=nP+nC+nR,totalFloors=above+nB,bPlate=g.plotSqft*h.basementCov/100;
  const types=h.units||[],hasTop=types.some(t=>t.top&&+t.perFloor>0)&&nR>0,typFloors=Math.max(0,nR-(hasTop?1:0));
@@ -43,9 +55,9 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});const g=geom(h),w=[],p
  if(hasTop&&topArea>resSellFloor+1)w.push(`Penthouse floor units (${Math.round(topArea)} sq ft) are bigger than the sellable area per floor (${Math.round(resSellFloor)} sq ft).`);
  const unitRows=types.map(t=>{const per=+t.perFloor||0,floors=t.top?(hasTop?1:0):typFloors,count=per*floors;return{id:t.id,name:t.name,size:+t.size,perFloor:per,floors,count,area:count*t.size,park:count*(+t.park||0),top:!!t.top};});
  const totalUnits=unitRows.reduce((a,u)=>a+u.count,0),resSell=unitRows.reduce((a,u)=>a+u.area,0);
- const floors=[];for(let i=nB;i>=1;i--)floors.push({key:'B'+i,type:'basement',label:'Basement '+i,area:bPlate,lvl:-i});
+ const floors=[];for(let i=nB;i>=1;i--){const ba=h.bAreas||[],own=+ba[i-1]>0?+ba[i-1]:(+ba[0]>0?+ba[0]:bPlate);floors.push({key:'B'+i,type:'basement',label:'Basement '+i,area:own,lvl:-i});}
  const GU={commercial:'Ground – commercial / shops',mixed:'Ground – mixed use',lobby:'Ground – lobby + shops'};
- const PL=[],CL=[];for(let i=0;i<nP;i++)PL.push({key:'P'+i,type:'parking',label:'Podium parking '+(i+1),area:plate});
+ const PL=[],CL=[];for(let i=0;i<nP;i++)PL.push({key:'P'+i,type:'parking',label:'Podium parking '+(i+1),area:+h.parkArea>0?+h.parkArea:plate});
  for(let i=0;i<nC;i++)CL.push({key:'C'+i,type:'commercial',label:'Commercial '+(i+1),area:plate});
  const gNon=GU[h.groundUse]&&nC>0,order=gNon?[CL[0],...PL,...CL.slice(1)]:[...PL,...CL];
  if(gNon)CL[0].label=GU[h.groundUse];else if(PL[0])PL[0].label='Ground parking';
@@ -67,7 +79,7 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});const g=geom(h),w=[],p
  const parkArea=floors.filter(f=>f.type==='basement'||f.type==='parking').reduce((a,f)=>a+f.area,0),provided=Math.floor(parkArea*h.parkEff/100/(h.carArea||350));
  if(provided<required)w.push(`Parking short: ${required} spaces required, ${provided} provided. Add basement/podium floors or reduce units.`);
  const construction=floors.reduce((a,f)=>a+f.cost,0);
- const lifts=Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0),stops=totalFloors;
+ const lifts=totalFloors>0?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
  const ex={lifts:lifts*(R.liftCost+R.liftPerStop*stops),fire:gross*R.fire,security:gross*R.security,generator:(totalUnits*R.kvaPerUnit+commGross*R.kvaPerCommSqft)*R.kvaRate,water:totalUnits*R.waterPerUnit};
  const extras=Object.values(ex).reduce((a,b)=>a+b,0),hard=construction+extras;
  const margin=hard*R.margin/100,contingency=hard*R.contingency/100,design=hard*R.designPct/100+R.approvals,tax=(hard+margin)*R.tax/100;
@@ -154,9 +166,9 @@ function quick(h){const b=Math.max(0,+h.basements|0),p=Math.max(0,+h.podium|0),c
 function quickSet(h,k,v){if(!(+h.qTotal>0))h.qTotal=quick(h).total;
  if(k==='groundUse'){h.groundUse=v;}else if(k==='groundArea'){v=+v||0;if(v>0){h.groundAuto=false;h.groundArea=v;}else{h.groundAuto=true;h.groundArea=0;}return quick(h);}
  else if(k==='plate'){h.plate=+v>0?+v:0;return quick(h);}
- else if(k==='total')h.qTotal=Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=Math.max(0,+v|0);else{h[k]=v;return quick(h);}
- const gu=h.groundUse||'parking';if(gu==='parking'){if(!(+h.podium>0))h.podium=1;}else if(!(+h.commercial>0))h.commercial=1;
- const q=quick(h);h.residential=q.residential;return q;}
-const api={GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
+ else if(k==='total')h.qTotal=v===''?0:Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=v===''?'':Math.max(0,+v|0);else{h[k]=v;return quick(h);}
+ if(k==='groundUse'){if(v==='parking'){if(!(+h.podium>0))h.podium=1;}else if(v&&!(+h.commercial>0))h.commercial=1;}
+ const q=quick(h);const any=+h.qTotal>0||['basements','podium','commercial'].some(x=>h[x]!==''&&h[x]!=null);h.residential=any?q.residential:'';return q;}
+const api={parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
 if(typeof module!=='undefined')module.exports=api;else root.HR=api;
 })(this);
