@@ -23,7 +23,7 @@ const UNIT_TYPES=[
 ];
 const DEFAULT_HR={plotArea:1000,plotUnit:'sqyd',plotW:0,plotD:0,plotPrice:150000000,plotPriceMode:'total',
  far:8,coverage:65,setFront:20,setRear:10,setSide:10,farExclParking:true,
- basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commEff:75,
+ basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commonPct:15,commEff:75,
  units:UNIT_TYPES,commPark:1000,carArea:320,parkEff:85,lifts:0,
  sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[],groundUse:'parking',qTotal:0};
 // fresh projects start blank: only rates / by-law coefficients keep defaults
@@ -34,8 +34,10 @@ function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.pl
  if(W>0&&!(D>0))D=plotSqft/W;else if(D>0&&!(W>0))W=plotSqft/D;else if(!(W>0&&D>0)){W=Math.sqrt(plotSqft/1.5);D=W>0?plotSqft/W:0;} // one dimension given: derive the other from the area // assume 1:1.5 plot if dims not given
  const bw=Math.max(0,W-2*h.setSide),bd=Math.max(0,D-h.setFront-h.setRear);
  const footprint=bw*bd,covMax=plotSqft*h.coverage/100,autoPlate=Math.min(footprint,covMax);
- const plate=+h.plate>0?+h.plate:autoPlate;
- return{plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
+ const ut=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0&&+t.size>0),net=ut.reduce((a,t)=>a+(+t.size)*(+t.perFloor),0),cp=h.commonPct===''||h.commonPct==null?15:Math.max(0,+h.commonPct||0);
+ // plate left empty: build it from the flats (units x size + common area %); only fall back to setbacks / coverage when there are no flat sizes
+ const src=+h.plate>0?'user':net>0?'flats':'auto',plate=src==='user'?+h.plate:src==='flats'?Math.round(net*(1+cp/100)):autoPlate;
+ return{plateSrc:src,net,commonPct:cp,units:ut,plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
 // "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
 function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/[\u00a0\u2009\u202f]/g,' ').replace(/(\d),(\d{3})(?!\d)/g,'$1$2').replace(/(\d),(\d{1,2})(?!\d)/g,'$1.$2').replace(/,/g,'').replace(/[–—−]/g,'-').replace(/[‘`´]/g,"'").replace(/[“]/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
  if(/-\s*\d+\s*(x|×|\*|by)|^-/.test(t.replace(/'\s*-\s*\d/g,"'"))&&/^-|[x×*]\s*-/.test(t))return null;
@@ -57,7 +59,8 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  const nB=Math.max(0,+h.basements|0),nP=Math.max(0,+h.podium|0),nC=Math.max(0,+h.commercial|0),nR=Math.max(0,+h.residential|0);
  const above=nP+nC+nR,totalFloors=above+nB,bPlate=g.plotSqft*h.basementCov/100;
  const types=h.units||[],hasTop=types.some(t=>t.top&&+t.perFloor>0)&&nR>0,typFloors=Math.max(0,nR-(hasTop?1:0));
- const core=plate*h.corePct/100,resSellFloor=plate-core;
+ const core=g.plateSrc==='flats'?plate-g.net:plate*h.corePct/100,resSellFloor=plate-core;
+ if(g.plateSrc==='user'&&g.net>0&&plate+1<g.net)w.push(`Floor plate ${Math.round(plate).toLocaleString('en-US')} sq ft is smaller than the flats on it (${Math.round(g.net).toLocaleString('en-US')} sq ft). Leave the plate empty to work it out from the flats, or check the sizes.`);
  const typArea=types.filter(t=>!t.top).reduce((a,t)=>a+t.size*t.perFloor,0),topArea=types.filter(t=>t.top).reduce((a,t)=>a+t.size*t.perFloor,0);
  if(typArea>resSellFloor+1&&typFloors>0)w.push(`Typical floor unit mix (${Math.round(typArea)} sq ft) is bigger than the sellable area per floor (${Math.round(resSellFloor)} sq ft).`);
  if(hasTop&&topArea>resSellFloor+1)w.push(`Penthouse floor units (${Math.round(topArea)} sq ft) are bigger than the sellable area per floor (${Math.round(resSellFloor)} sq ft).`);
@@ -88,10 +91,11 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  if(provided<required)w.push(`Parking short: ${required} spaces required, ${provided} provided. Add basement/podium floors or reduce units.`);
  if(+R.tierRate>0)floors.forEach(f=>{f.rate=+R.tierRate;f.cost=(+f.area||0)*f.rate;f.tier=true;});
  const construction=floors.reduce((a,f)=>a+f.cost,0);
- const lifts=above>0?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
+ const lifts=above>1?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
  const ex={lifts:lifts*(R.liftCost+R.liftPerStop*stops),fire:gross*R.fire,security:gross*R.security,generator:(totalUnits*R.kvaPerUnit+commGross*R.kvaPerCommSqft)*R.kvaRate,water:totalUnits*R.waterPerUnit};
+ const allIn=+R.tierRate>0,K=v=>allIn?0:v;if(allIn)Object.keys(ex).forEach(k=>ex[k]=0); // your tier rate is all-in
  const extras=Object.values(ex).reduce((a,b)=>a+b,0),hard=construction+extras;
- const margin=hard*R.margin/100,contingency=hard*R.contingency/100,design=hard*R.designPct/100+R.approvals,tax=(hard+margin)*R.tax/100;
+ const margin=K(hard*R.margin/100),contingency=K(hard*R.contingency/100),design=K(hard*R.designPct/100+(hard>0?R.approvals:0)),tax=K((hard+margin)*R.tax/100);
  const buildTotal=hard+margin+contingency+design+tax;
  const plot=h.plotPriceMode==='perunit'?(+h.plotPrice||0)*(+h.plotArea||0):(+h.plotPrice||0);
  const grand=buildTotal+plot,sellable=resSell+commSell;

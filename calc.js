@@ -106,7 +106,8 @@ function estimate(p,s){if(p.mode==='highrise'){const H=HRm(),tr=tierRate(p,s),c=
  const plotSqft=(+p.plotArea||0)*unitSqft(p.plotUnit,s);
  if(plotSqft>0&&(floorAreas(p)[0]||0)>plotSqft)w.push('Ground floor area is bigger than the plot.');
  const plot=p.plotPriceMode==='perunit'?(+p.plotPrice||0)*(+p.plotArea||0):(+p.plotPrice||0);
- const margin=construction*s.margin/100,contingency=construction*s.contingency/100,design=construction*s.designPct/100+(+s.approvalFee||0),tax=(construction+margin)*s.tax/100;
+ // your tier rate is all-in: no margin / contingency / design / tax on top; fixed approval fee only once there is something to build
+ const allIn=!!tierRate(p,s),K=v=>allIn?0:v;const margin=K(construction*s.margin/100),contingency=K(construction*s.contingency/100),design=K(construction*s.designPct/100+(construction>0?(+s.approvalFee||0):0)),tax=K((construction+margin)*s.tax/100);
  const buildTotal=construction+margin+contingency+design+tax;
  return{floors:fl,totalArea,plotSqft,construction,grey,finish:construction-grey,plot,margin,contingency,design,tax,buildTotal,grand:buildTotal+plot,perSqft:totalArea?buildTotal/totalArea:0,warnings:w};}
 // BOQ rows (defaults) for every floor x item, then project edits (overrides/deletes/custom rows) applied on top.

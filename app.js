@@ -252,11 +252,11 @@ function stackHTML(h){const nB=+h.basements|0;let x=`<ol class="stack">`;
  x+=`<li><h3>1 · Basements</h3><div class="qgrid">${numF('How many basements?','bN','0, 1, 2…')}<div class="qbs" id="qBs">${bFields(nB)}</div></div></li>`;
  x+=`<li><h3>2 · Ground floor – shops for sale</h3><div class="qgrid">${dimF('Ground floor – L x W ft or sq ft','gDim')}${numF('Number of shops','shops','e.g. 6')}${qi('Shop sizes sq ft (optional)','data-qs="shopList"','',{text:1,ph:'auto split, or 300, 450, 500'})}</div></li>`;
  x+=`<li><h3>3 · Parking floors above ground</h3><div class="qgrid">${numF('How many parking floors?','pN','0, 1, 2…')}${dimF('Parking floor – L x W ft or sq ft','pDim','same as residential')}</div></li>`;
- x+=`<li><h3>4 · Residential floors</h3><div class="qgrid">${numF('How many residential floors?','rN','e.g. 12')}${dimF('Floor plate – L x W ft or sq ft','rDim')}${numF('Flats per floor','upf','e.g. 4')}${numF('Flat size sq ft','usize','auto')}</div></li></ol>`;return x;}
+ x+=`<li><h3>4 · Residential floors</h3><div class="qgrid">${numF('How many residential floors?','rN','e.g. 12')}${dimF('Floor plate – L x W ft or sq ft','rDim')}${numF('Flats per floor','upf','e.g. 4')}${numF('Flat size sq ft','usize','auto')}${numF('Common area % (lobby, stairs, lift, corridor)','common','15')}</div><div class="sub plateNote" data-platenote></div></li></ol>`;return x;}
 function stackVals(h){const sh=(dim,area,ok)=>{const a=+area>0&&ok!==false?+area:0;if(dim&&String(dim).trim()&&!H.dimA(dim))return dim;return dim&&H.dimA(dim)===a&&a?dim:(a?a:'');};const o={bN:h.basements===''||h.basements==null?'':+h.basements|0};
  for(let i=0;i<(+h.basements|0);i++)o['b'+i]=sh((h.bDims||[])[i],(h.bAreas||[])[i]);
  o.gDim=sh(h.gDim,h.groundArea,h.groundAuto===false);o.shops=h.shops||'';o.shopList=h.shopList||'';o.pN=h.podium===''||h.podium==null?'':+h.podium|0;o.pDim=sh(h.pDim,h.parkArea);o.rN=h.residential===''||h.residential==null?'':+h.residential|0;o.rDim=sh(h.rDim,h.plate);
- const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);o.upf=u.length?u.reduce((a,t)=>a+(+t.perFloor),0):'';o.usize=!h.uSizeAuto&&u.length===1&&+u[0].size>0?u[0].size:'';return o;}
+ const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);o.upf=u.length?u.reduce((a,t)=>a+(+t.perFloor),0):'';o.usize=!h.uSizeAuto&&u.length===1&&+u[0].size>0?u[0].size:'';o.common=h.commonPct===15||h.commonPct==null?'':h.commonPct;return o;}
 function stackSet(h,k,v){const n=numB(v);h.qTotal=0;
  if(k==='bN'){h.basements=n===''?'':Math.min(8,Math.max(0,n|0));}
  else if(/^b\d+$/.test(k)){const i=+k.slice(1);(h.bDims=h.bDims||[])[i]=v;(h.bAreas=h.bAreas||[])[i]=H.dimA(v)||'';}
@@ -265,16 +265,18 @@ function stackSet(h,k,v){const n=numB(v);h.qTotal=0;
  else if(k==='shopList')h.shopList=v;
  else if(k==='pN')h.podium=n===''?'':Math.max(0,n|0);
  else if(k==='pDim'){h.pDim=v;h.parkArea=H.dimA(v)||0;}
+ else if(k==='common')h.commonPct=n===''?15:Math.max(0,n);
  else if(k==='rN')h.residential=n===''?'':Math.max(0,n|0);
  else if(k==='rDim'){h.rDim=v;h.plate=H.dimA(v)||0;}
  else if(k==='upf'||k==='usize'){const cur=stackVals(h),upf=k==='upf'?n:cur.upf,us=k==='usize'?n:cur.usize;h.units=[{id:'apt',name:'Flat',beds:2,size:us===''?'':us,perFloor:upf===''?'':upf,park:1}];h.uSizeAuto=us==='';}
  if(h.groundUse==='commercial'&&!(+h.podium>0)&&h.podium!=='')h.podium=+h.podium|0;}
+function plateTxt(e){const g=e.g||{};if(g.plateSrc==='flats')return `<br><small class="plateBk">${g.units.map(u=>`${u.perFloor} × ${n0(u.size)}`).join(' + ')} = ${n0(g.net)} + ${g.commonPct}% common = ${n0(g.plate)} sq ft</small>`;if(g.plateSrc==='user')return '<br><small class="plateBk">floor plate you entered</small>';return '<br><small class="plateBk">plate from plot setbacks / coverage</small>';}
 function stackSummary(p,e){const h=p.hr,L=[];let last=null;
  e.floors.slice().sort((a,b)=>a.lvl-b.lvl).forEach(f=>{const t=f.type==='commercial'&&f.lvl===0?'shops':f.type,k=t+'|'+Math.round(f.area);if(last&&last.k===k){last.n++;last.to=f.label;}else{last={k,t,n:1,from:f.label,to:f.label,area:f.area};L.push(last);}});
  const ico={basement:'🅿️',parking:'🚗',shops:'🛍️',commercial:'🏬',residential:'🏠'};
  const shops=H.shopSizes(h);const ur=e.unitRows.filter(u=>u.count>0);
  return `<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot · building ${C.words(e.buildTotal)}${e.gross?' · '+fmt(e.buildTotal/e.gross)+' / sq ft':''}</small></div>
- <div class="rlist stackSum">`+L.slice().reverse().map(g=>`<div class="rrow"><b>${ico[g.t]||''} ${esc(g.n>1?g.from+' – '+g.to:g.from)}</b><span>${g.n>1?g.n+' × ':''}${n0(g.area)} sq ft</span><em>${n0(g.area*g.n)} sq ft</em></div>`).join('')+
+ <div class="rlist stackSum">`+L.slice().reverse().map(g=>`<div class="rrow"><b>${ico[g.t]||''} ${esc(g.n>1?g.from+' – '+g.to:g.from)}</b><span>${g.n>1?g.n+' × ':''}${n0(g.area)} sq ft${g.t==='residential'?plateTxt(e):''}</span><em>${n0(g.area*g.n)} sq ft</em></div>`).join('')+
  (shops.length?`<div class="rrow"><b>🛍️ Shops</b><span>${shops.length} shops: ${shops.map(n0).join(', ')} sq ft</span><em>${n0(shops.reduce((a,b)=>a+b,0))} sq ft</em></div>`:'')+
  `<div class="rrow"><b>🏠 Flats</b><span>${ur.length?ur.map(u=>`${u.perFloor}/floor × ${u.floors} floors · ${n0(u.size)} sq ft each`).join('; '):'add flats per floor'}</span><em data-qunits>${e.totalUnits} flats</em></div>
  <div class="rrow tot"><b>Gross built-up area</b><span>${e.totalFloors} levels</span><em data-qgross>${n0(e.gross)} sq ft</em></div><div class="rrow tot"><b>Total cost</b><span>building + plot</span><em>${fmt(e.grand)}</em></div></div>`+e.warnings.slice(0,2).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
