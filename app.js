@@ -335,6 +335,7 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();defP=e;$('#
 $('#installBtn').onclick=async()=>{if(!defP)return;defP.prompt();await defP.userChoice;defP=null;$('#installHint').hidden=true;};
 $('#ihClose').onclick=()=>{$('#installHint').hidden=true;st.hintClosed=true;save();};
 if(!standalone&&!st.hintClosed&&MQ.matches){if(/iphone|ipad|ipod/i.test(navigator.userAgent))$('#ihText').textContent='To install: tap the Share button, then "Add to Home Screen".';else $('#ihText').textContent='Install: open the browser menu ⋮ and choose "Add to Home screen" / "Install app".';$('#installHint').hidden=false;}
+document.addEventListener('click',e=>{if(e.target.closest('#goSale')){const c=$('#salesCard');c&&c.scrollIntoView({behavior:'smooth',block:'start'});c&&c.classList.add('flash');setTimeout(()=>c&&c.classList.remove('flash'),1500);}});
 window.__app={st:()=>st,renderAll,wizOpen,P,S,save,loadInputs,ensureHR,idb,applyMode,fmt,num,esc};
 loadInputs();renderAll();fitBar();if(!st.started){const p=P();if(!isEmpty(p)){const n=newProject();st.projects.unshift(n);st.cur=n.id;loadInputs();renderAll();}startShow();}save();
 document.addEventListener('focusin',e=>{const t=e.target;if(!MQ.matches||!t.matches||!t.matches('input,select,textarea'))return;setTimeout(()=>{const r=t.getBoundingClientRect(),n=document.querySelector('nav').getBoundingClientRect(),b=$('#totBar').getBoundingClientRect(),lim=Math.min(n.top,b.top)-8;if(r.bottom>lim)scrollBy(0,r.bottom-lim+12);else if(r.top<8)scrollBy(0,r.top-60);},60);});window.__ready=true;})();
