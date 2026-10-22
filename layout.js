@@ -132,7 +132,7 @@ const TILE=2400,OVER=360;
 async function readSource(src,page,always,step,fixed){let L=Math.max(src.W,src.H);
  // 1) straighten tilted photos/scans (a few degrees of tilt breaks the text reader)
  if(!fixed){step&&step('straightening',.02);try{const s=await straighten(src);if(s){src=s.src;L=Math.max(src.W,src.H);LAYINFO.push(`page ${page+1}: straightened ${s.angle}°`);}}catch(_){}}
- let k=Math.min(src.pts?4:1.5,1400/L),cv=await src.draw(0,0,src.W,src.H,k);const rich=colourful(cv)>.12,prep=c=>unline(rich?darkMask(c,150):gray(c));
+ let k=Math.min(src.pts?4:1.5,1400/L),cv=await src.draw(0,0,src.W,src.H,k);const LO=window.LAY_OPTS||{},rich=colourful(cv)>.12,prep=c=>unline(rich?darkMask(c,LO.mask||150):gray(c));
  prep(cv);let lines=await ocr(cv,page,{sx:0,sy:0,k});
  // 2) sideways / upside-down page: try the other three turns when the upright read finds little
  if(!fixed&&!cancelReq&&looks(lines)<6){let best={deg:0,s:looks(lines)};for(const deg of [90,270,180]){if(cancelReq)break;step&&step('checking page direction',.05);const r=rotAny(cv,deg),rl=await ocr(r,page,{sx:0,sy:0,k});free(r);const s=looks(rl);if(s>best.s*1.6+3)best={deg,s};}
@@ -140,7 +140,7 @@ async function readSource(src,page,always,step,fixed){let L=Math.max(src.W,src.H
  free(cv);
  if(cancelReq||(!always&&!PLANRE.test(lines.map(l=>l.text).join(' '))))return {lines,plan:false};
  // sharper pass: ~4400 px across an A4/A3 sheet (≈2.5× a 150 dpi scan) so 6-9 px labels become readable; cut into tiles to keep phone memory low
- const T=src.pts?Math.min(5200,Math.max(3000,L*5.2)):Math.min(5200,Math.max(2600,L*(rich?2.5:1))),k2=T/L,cw=src.W*k2,ch=src.H*k2,nx=Math.ceil((cw-OVER)/(TILE-OVER)),ny=Math.ceil((ch-OVER)/(TILE-OVER));
+ const T=src.pts?Math.min(5200,Math.max(3000,L*5.2)):Math.min(LO.maxT||5200,Math.max(2600,L*(rich?(LO.up||2.5):1))),k2=T/L,cw=src.W*k2,ch=src.H*k2,nx=Math.ceil((cw-OVER)/(TILE-OVER)),ny=Math.ceil((ch-OVER)/(TILE-OVER));
  const tiles=[];for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){const x0=Math.min(i*(TILE-OVER),Math.max(0,cw-TILE)),y0=Math.min(j*(TILE-OVER),Math.max(0,ch-TILE));tiles.push([x0/k2,y0/k2,Math.min(TILE,cw)/k2,Math.min(TILE,ch)/k2]);}
  let hi=[];for(let t=0;t<tiles.length&&!cancelReq;t++){step&&step(`sharp pass ${t+1}/${tiles.length}`,(t+1)/(tiles.length+2));const [sx,sy,sw,sh]=tiles[t];const c=prep(await src.draw(sx,sy,sw,sh,k2));hi=hi.concat(await ocr(c,page,{sx,sy,k:k2}));free(c);await new Promise(r=>setTimeout(r,0));}
  // drop duplicates read twice in the tile overlaps
@@ -172,6 +172,12 @@ async function readSource(src,page,always,step,fixed){let L=Math.max(src.W,src.H
  if(bare>=2&&!cancelReq){const k3=Math.min(src.pts?4:1,2400/L),base=prep(await src.draw(0,0,src.W,src.H,k3));
   for(const [deg,fr] of [[90,1],[270,3]]){if(cancelReq)break;step&&step('sideways text',.95);const r=rot(base,deg);const rl=(await ocr(r,page,{sx:0,sy:0,k:k3,frame:fr})).filter(l=>KEEPRE.test(l.text));free(r);lines=lines.concat(rl);}
   free(base);}
+ // plot edge dimensions are often written sideways along the left/right borders: read the two strips turned upright
+ if(!cancelReq&&!lines.some(l=>l.edge)){step&&step('plot edges',.97);const ke=Math.min(src.pts?4:(window.LAY_OPTS||{}).ke||2,4800/L),sw=src.W*.13;
+  for(const [x0,deg] of [[0,90],[src.W-sw,90],[0,270],[src.W-sw,270]]){if(cancelReq)break;const c=prep(await src.draw(x0,0,sw,src.H,ke)),r=rot(c,deg);free(c);let got=0;
+   for(let tx=0;tx<r.width;tx+=1000){const tw=Math.min(1400,r.width-tx),t=document.createElement('canvas');t.width=tw;t.height=r.height;t.getContext('2d').drawImage(r,tx,0,tw,r.height,0,0,tw,r.height);
+    let rl=(await ocr(t,page,{sx:0,sy:0,k:ke,frame:deg===90?1:3}));rl=rl.filter(l=>/\d{2,3}\s*(['’`]|-\s*\d{1,2}\s*")/.test(l.text));free(t);rl.forEach(l=>{l.edge=true;l.x=x0?src.W-5:5;l.y=src.H/2;});got+=rl.length;lines=lines.concat(rl);}
+   free(r);if(got&&deg===90&&x0)break;}}
  return {lines,plan:true};}
 // ---------- progress ----------
 function prog(pct,msg){document.querySelectorAll('.layProg').forEach(p=>{p.hidden=pct==null;p.querySelector('i').style.width=Math.round(pct||0)+'%';p.querySelector('.pmsg').textContent=msg||'';});document.querySelectorAll('.layRead').forEach(b=>b.disabled=pct!=null);}

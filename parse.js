@@ -3,32 +3,39 @@
 (function(root){
 const FT_PER_M=3.28084;
 const ROOMS=[
- ['bedroom',/\b(m\.\s*bed(?:\s*room)?|master\s*bed(?:\s*room)?|bed\s*rm|guest\s*(?:bed\s*)?room|bed\s*room|bedroom|bed|b\.?r\.?)\b\s*(?:[-#]?\s*\d)?/i],
+ ['bedroom',/\b(m\s*\.?\s*bed\s*room|master\s*bed\s*room|m\.\s*bed(?:\s*room)?|master\s*bed(?:\s*room)?|bed\s*rm|guest\s*(?:bed\s*)?room|bed\s*room|bedroom|bed|b\.?r\.?)\b\s*(?:[-#]?\s*\d)?/i],
  ['lounge',/\b(tv\s*lounge|family\s*lounge|lounge|living(?:\s*room)?|family\s*room|sitting(?:\s*room)?)\b/i],
  ['drawing',/\b(drawing(?:\s*room)?|drawing\s*\/\s*dining)\b/i],
  ['dining',/\b(dining(?:\s*room)?)\b/i],
- ['kitchen',/\b(kitchen|kitchenette|pantry)\b/i],
- ['bath',/\b(t\.\s*let|tlt|pow\.|pow\b|attached\s*bath|bath\s*room|bathroom|bath|toilet|w\.?c|washroom|powder(?:\s*room)?)\b/i],
+ ['kitchen',/\b([gf]\s*[\/.]\s*kitchen|family\s*kitchen|dirty\s*kitchen|kitchen|kitchenette|pantry)\b/i],
+ ['bath',/\b(pool\s*bath|dress\s*\/\s*bath|t\.\s*let|tlt|pwd|pow\.|pow\b|attached\s*bath|bath\s*room|bathroom|bath|toilet|w\.?c|washroom|powder(?:\s*room)?)\b/i],
  ['store',/\b(store(?:\s*room)?|storage)\b/i],
- ['shop',/\b(sho[pf]|showroom|retail|office)\b(?:\s*[-#]?\s*\d+)?/i],
- ['parking',/\b(car\s*porch|porch|car\s*parking|parking|garage|ramp(?:\s*up|\s*down)?(?:\s*(?:in|out))?)\b/i],
- ['servant',/\b(servant(?:\s*(?:quarter|room))?|s\.?\s*q)\b/i],
- ['laundry',/\b(laundry|wash\s*area)\b/i],
+ ['shop',/\b(sho[pf]|showroom|retail)\b(?:\s*[-#]?\s*\d+)?/i],
+ ['parking',/\b(car\s*porch|carporch|porch|car\s*parking|parking|garage|ramp(?:\s*up|\s*down)?(?:\s*(?:in|out))?)\b/i],
+ ['servant',/\b(servant(?:\s*(?:quarter|room))?|maid(?:\s*(?:rm|room))?|driver(?:\s*(?:rm|room))?|s\.?\s*q)\b/i],
+ ['laundry',/\b(laundry|wash\s*area|utility)\b/i],
  ['dress',/\b(dress(?:ing)?(?:\s*room)?|wardrobe|walk[-\s]*in|w\.\s*r)\b/i],
- ['study',/\b(study|library)\b/i],
+ ['study',/\b(study|library|office)\b/i],
  ['prayer',/\b(prayer(?:\s*room)?)\b/i],
- ['lobby',/\b(lobby|foyer\.?|entrance|reception|recreation(?:\s*&\s*waiting)?(?:\s*area)?|waiting\s*area)\b/i],
+ ['lobby',/\b(stair\s*lobby|lift\s*lobby|ent(?:rance|\.)?\s*foyer|lobby|foyer\.?|entrance|reception|recreation(?:\s*&\s*waiting)?(?:\s*area)?|waiting\s*area)\b/i],
  ['corridor',/\b(corridor|passage|lobby\s*passage|arcade)\b/i],
- ['stair',/\b(stairs?(?:case)?)\b/i],
+ ['stair',/\b(spiral\s*stairs?|spiral|sprial|stairs?(?:case)?)\b/i],
  ['lift',/\b(car\s*lift|cargo\s*lift|lift|elevator)\b/i],
- ['terrace',/\b(ser\.?\s*bal\.?|terrace|balcony|bal\.|veranda|verandah)\b/i],
- ['lawn',/\b(lawn|garden|court\s*yard|courtyard)\b/i]];
+ ['terrace',/\b(deck(?:\s*area)?|ser\.?\s*bal\.?|terrace|balcony|bal\.|veranda|verandah)\b/i],
+ ['lawn',/\b(lawn|garden|court\s*yard|courtyard)\b/i],
+ ['hall',/\b(multi\s*-?\s*purpose\s*hall|hall|home\s*theat(?:re|er)|theat(?:re|er)|cinema|game\s*room|gym|play\s*room|family\s*room)\b/i],
+ ['pool',/\b(swimming\s*pool|pool|pond|jacuzzi|water\s*body|fountain)\b/i],
+ ['plant',/\b(filter(?:\s*room)?|pump(?:\s*room)?|g\.?\s*rm|generator(?:\s*room)?|ups\s*room|electric(?:al)?\s*room|meter\s*room|guard\s*room|security\s*room)\b/i],
+ ['platform',/\b(raised\s*platform|platform|stage|podium)\b/i],
+ ['void',/\b(void|open\s*to\s*sky|shaft)\b/i]];
 const WORDN={first:1,second:2,third:3,fourth:4,fifth:5,sixth:6,seventh:7,eighth:8,ninth:9,tenth:10};
 const OCRD={T:'7',I:'1',l:'1','|':'1',O:'0',o:'0',S:'5',G:'6',B:'8',Z:'2'};
 function norm(s){return pre(String(s||'')).replace(/(^|[\s(x×X])([TIlOoSGBZ|])(?=\s*['’′°]\s*-?\s*\d)/g,(m,a,c)=>a+OCRD[c]).replace(/(\d\s*['’′°]\s*-\s*)([TIlOoSGBZ])(?=\s*["”″])/g,(m,a,c)=>a+OCRD[c]).replace(/[’′‘`´°]/g,"'").replace(/(\d['"]?)\s*[%¥]\s*(?=\d)/g,'$1x').replace(/[”″“]/g,'"').replace(/''/g,'"').replace(/(\d['"]?)\s*[×X*✕]\s*(?=\d)/g,'$1 x ').replace(/(\d)\s*[×X*✕]\s*/g,'$1 x ').replace(/[–—]/g,'-').replace(/\s+/g,' ').trim();}
 const MU='(?:mm|m|mtrs?|meters?|metres?)';
 // shapes OCR and draughtsmen use that the main pattern does not: 12'6x16' (inches without "), 3.8m x 4.2m (unit on both sides), 1,250 S.FT
-function pre(s){return s.replace(/(\d)\s*['’′]\s*-?\s*(\d{1,2}(?:\.\d)?)(?![\d.'’′"”″]|\s*(?:in\b|inch|["”″]|['’′]['’′]))/g,"$1'-$2\"").replace(new RegExp('(\\d(?:\\.\\d+)?)\\s*('+MU+')\\s*[xX×*✕]\\s*(?=\\d[\\d.]*\\s*\\2\\b)','gi'),'$1 x ').replace(/\b[sS]\.\s*[fF][tT]\b\.?/g,'sft').replace(/\b[sS]\s*[fF]\s*[tT]\b/g,'sft');}
+// OCR on rendered plans: ' read as " or ° or ! ] |, dropped apostrophes ("156"" = 15'-6", "1200"" = 12'-0")
+function ftFix(s){const OC={C:'0',c:'0',O:'0',o:'0','€':'6',G:'6',b:'6',S:'5',s:'5'};s=s.replace(/(\d{1,2}\s*['’]\s*[xX×]\s*)(\d{2})\s*["”](?!\s*\d)/g,(m,a,b)=>+b>=12&&+b<=60?a+b+"'":m).replace(/(^|[^\d'’-])1([1-3]\d)\s*-\s*(\d{1,2})\s*"(?=\s*[xX×])/g,"$1$2'-$3\"").replace(/([xX×])\s*[xX%]|%\s*([xX])/g,'x').replace(/(\d\s*["'’°]\s*-?\s*)([CcOo€GbSs])(?=\s*["”']|\s*[xX×]|\s*$)/g,(m,a,c)=>a+OC[c]).replace(/(^|[^\d.])(\d{1,3})\s*(?:["'’°]\s*-?\s*|\s+|-)(\d{1,2})\s*["”'’°]/g,(m,a,f,i)=>+i<12?a+f+"'-"+i+'"':m);return s.replace(/(\d)\s*[!\]|](?=\s|$|\s*[xX×*])/g,"$1'").replace(/(^|[^\d'’′.\-])(\d{1,2})-(\d{1,2})"/g,"$1$2'-$3\"").replace(/(^|[^\d'’′.\-])(\d{1,4})"/g,(m,a,n)=>{let ft=n,inch=null;if(n.length===3){ft=n.slice(0,2);inch=n.slice(2);}else if(n.length===4){ft=n.slice(0,2);inch=n.slice(2);}else if(n.length===2&&+n>60){ft=n[0];inch=n[1];}if(inch!=null&&+inch>11)return m;return a+ft+"'"+(inch!=null&&+inch>0?'-'+(+inch)+'"':'');});}
+function pre(s){s=/\d/.test(s)&&/[xX×*%]/.test(s)?ftFix(s):s;return s.replace(/(\d)\s*['’′]\s*-?\s*(\d{1,2}(?:\.\d)?)(?![\d.'’′"”″]|\s*(?:in\b|inch|["”″]|['’′]['’′]))/g,"$1'-$2\"").replace(new RegExp('(\\d(?:\\.\\d+)?)\\s*('+MU+')\\s*[xX×*✕]\\s*(?=\\d[\\d.]*\\s*\\2\\b)','gi'),'$1 x ').replace(/\b[sS]\.\s*[fF][tT]\b\.?/g,'sft').replace(/\b[sS]\s*[fF]\s*[tT]\b/g,'sft');}
 const SIDE="(\\d{1,5}(?:\\.\\d{1,2})?)\\s*('|ft\\.?|feet)?\\s*(?:-\\s*(\\d{1,2}(?:\\.\\d)?)(?!\\d)\\s*(?:\"|in\\b)?|\\s*(\\d{1,2}(?:\\.\\d)?)\\s*(?:\"|in\\b))?";
 const DIM=new RegExp('(^|[^\\w.])'+SIDE+'\\s*x\\s*'+SIDE+'\\s*(mm|m\\b|mtrs?|meters?|metres?)?','gi');
 const AREA=/(^|[^\w.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(sq\.?\s*f(?:ee|oo)?t|sq\.?\s*ft\.?|sft|sqft|s\.f\.t?|ft2|ft²|square\s*f(?:ee|oo)t|sq\.?\s*y(?:ar)?ds?|sq\.?\s*yd\.?|sqyd|syd|square\s*yards?|yards?|marlas?|m2|m²|sq\.?\s*m(?:eters?|etres?)?\b|sqm)/gi;
@@ -61,7 +68,7 @@ function plotIn(s,marla){const t=norm(s);if(!/\b(plot|site)\b/i.test(t))return n
  if(a)return {sqft:a.sqft,value:a.value,unit:a.unit,raw:a.raw,conf:.9};if(d)return {sqft:+(d.w*d.d).toFixed(1),w:d.w,d:d.d,raw:d.raw,conf:.85};
  const mm=t.match(/(\d+(?:\.\d+)?)\s*marla/i);if(mm)return {sqft:+mm[1]*(marla||225),value:+mm[1],unit:'marla',raw:mm[0],conf:.8};return null;}
 function coveredIn(s){const t=norm(s);if(!/(covered|built[-\s]*up|floor\s*area|total\s*area|plinth)/i.test(t)||/\bplot\b/i.test(t))return null;const a=areas(t)[0];return a?{sqft:a.sqft,raw:a.raw}:null;}
-const MAXS={bath:16,terrace:30,lift:25,stair:30,lobby:40,corridor:80,store:20,dress:16,servant:20,laundry:16,prayer:20,study:25,kitchen:30,bedroom:35,drawing:40,dining:35,lounge:45,shop:120,parking:120,lawn:150};
+const MAXS={hall:70,pool:80,plant:20,platform:40,void:40,bath:16,terrace:50,lift:25,stair:30,lobby:40,corridor:80,store:20,dress:16,servant:20,laundry:16,prayer:20,study:25,kitchen:30,bedroom:35,drawing:40,dining:35,lounge:45,shop:120,parking:120,lawn:150};
 function plausible(w,d,type){const mx=MAXS[type]||60,mn=/terrace|corridor/.test(type)?2.5:3;return w>=mn&&d>=mn&&w<=mx&&d<=mx&&w*d<=mx*mx*.6;}
 
 // which printed area to use when a line/row has several (carpet / covered / super)
@@ -124,12 +131,16 @@ function parse(lines,opts){opts=opts||{};const marla=opts.marla||225,wf=opts.wal
    rs.forEach((r,k)=>{const d=ds.find(x=>x.idx>r.idx&&(!rs[k+1]||x.idx<rs[k+1].idx))||(rs.length===1?ds[0]:null),a=as.find(x=>x.idx>r.idx&&(!rs[k+1]||x.idx<rs[k+1].idx))||(rs.length===1?as[0]:null);
     rooms.push({type:r.type,label:cap(r.label),line:l,dim:d||null,area:a||null,oc});});}
   else{ds.forEach(d=>free.push({kind:'dim',v:d,line:l,used:false}));as.forEach(a=>free.push({kind:'area',v:a,line:l,used:false}));}});
+ // two reads of the same spot (tile overlap): keep the cleaner one (feet marks, higher OCR confidence)
+ free.forEach(f=>{if(f.kind!=='dim'||f.used)return;const fx=(f.line.x||0)+(f.line.w||0)/2;if(free.some(g=>g!==f&&g.kind==='dim'&&!g.used&&g.line!==f.line&&g.line.page===f.line.page&&(g.line.frame||0)===(f.line.frame||0)&&Math.abs((g.line.y||0)-(f.line.y||0))<Math.max(f.line.h||10,8)&&Math.abs((g.line.x||0)+(g.line.w||0)/2-fx)<40&&Math.round(g.v.w)===Math.round(f.v.w)&&Math.round(g.v.d)!==Math.round(f.v.d)&&String(Math.round(g.v.d)).startsWith(String(Math.round(f.v.d)))&&((g.v.marks&&!f.v.marks)||(!!g.v.marks===!!f.v.marks&&(g.line.conf||0)>(f.line.conf||0)+20))))f.used=true;});
  // attach a free dimension/area to labels that had none (nearest below, else above; same page)
  const cx=l=>l.x+(l.w||0)/2;
  rooms.filter(r=>!r.dim&&!r.area).forEach(r=>{let best=null,bd=1e9;free.forEach(f=>{if(f.used||f.line.page!==r.line.page||(f.line.frame||0)!==(r.line.frame||0))return;const lh=Math.max(r.line.h||12,8);let dy=f.line.y-r.line.y,dx=Math.abs(cx(f.line)-cx(r.line));
    const tg=f.tag&&f.tag===r.type;if(!r.line.geo){if(f.line.i!==r.line.i+1&&!(tg&&f.line.i>r.line.i&&f.line.i<=r.line.i+3))return;dy=f.line.i-r.line.i;dx=0;}else if(tg){if(dy<0||dy>14*lh||dx>Math.max(r.line.w||0,f.line.w||0)*1.5)return;dy=dy/4;}else{if(dy<-1.6*lh||dy>3.6*lh||dx>Math.max(r.line.w||0,f.line.w||0,lh*4))return;}
    const sc=Math.abs(dy)*(dy<0?2:1)+dx;if(sc<bd){bd=sc;best=f;}});
   if(best){best.used=true;r[best.kind==='dim'?'dim':'area']=best.v;r.paired=true;}});
+ // a sheet with a title block ("GROUND FLOOR PLAN") belongs to that floor: drop stray words like "Podium 10' Wide" as floor headings there
+ {const titled=new Set(floors.filter(f=>/plan/i.test(f.line.text)).map(f=>f.line.page));for(let i=floors.length-1;i>=0;i--){const f=floors[i];if(titled.has(f.line.page)&&!/plan|floor|level|flr/i.test(f.line.text))floors.splice(i,1);}}
  // floors: which floor heading each item belongs to
  const pageUnit={};units.forEach(u=>{(pageUnit[u.line.page]=pageUnit[u.line.page]||new Set()).add(u.name);});
  const assign=it=>{const fs=floors.filter(f=>f.line.page===it.line.page);if(!fs.length){const pu=pageUnit[it.line.page];if(pu&&pu.size===1){const n=[...pu][0];return {name:n+' (unit plan)',level:1,kind:'unit'};}const pages=new Set(L.map(l=>l.page));return pages.size>1?{name:((opts.pageLabel&&opts.pageLabel[it.line.page])||'Page '+(it.line.page+1))+' floor',level:it.line.page}:null;}
@@ -164,6 +175,10 @@ function parse(lines,opts){opts=opts||{};const marla=opts.marla||225,wf=opts.wal
  // a single floor that sits inside a range read elsewhere ("First floor" vs "1st–10th floor") is the same floor: keep the range
  Object.keys(faMap).forEach(k=>{const f=faMap[k];if((f.count||1)>1||f.level==null)return;const rg=Object.values(faMap).find(g=>g!==f&&(g.count||1)>1&&f.level>=g.level&&f.level<=g.level+g.count-1);if(rg){rg.pages=[...new Set(rg.pages.concat(f.pages))];rg.dups=(rg.dups||0)+1+(f.dups||0);rg.merged=(rg.merged||[]).concat(f.floor+' '+Math.round(f.sqft)+' sq ft');delete faMap[k];}});
  const outFA=Object.values(faMap).sort((a,b)=>a.level-b.level).map(f=>({floor:f.floor,level:f.level,count:f.count||1,sqft:f.sqft,each:!!f.each,kind:f.kind||null,use:f.use||null,conf:+(+f.conf).toFixed(2),raw:f.raw,from:f.from||'text',page:f.line?f.line.page:null,pages:f.pages,dups:f.dups||0,merged:f.merged||null}));
+ if(!plots.some(x=>x.sqft)){const hasPlot=lines.some(l=>/\bplot\s*no\b|\bplot\b/i.test(l.text||''));
+  const one=t=>{const s=String(t||'').replace(/[’`´]/g,"'").replace(/(\d{2,3})\s*-\s*(\d{1,2})\s*"/g,"$1'-$2\"");if(/\d\s*[xX×*]\s*\d/.test(s))return null;const m=s.match(/(?:^|[^\d'])(\d{2,3})\s*'\s*-?\s*(\d{1,2})?\s*"?/);if(!m)return null;const v=+m[1]+(+(m[2]||0))/12;return v>=40&&v<=400&&(+(m[2]||0))<12?+v.toFixed(2):null;};
+  const W=lines.filter(l=>!l.edge).map(l=>one(l.text)).filter(Boolean).sort((a,b)=>a-b),D=lines.filter(l=>l.edge).map(l=>one(l.text)).filter(Boolean);
+  if(hasPlot&&W.length&&D.length){const w=W[Math.floor((W.length-1)/2)],d=Math.max(...D);if(d>=w*.5&&d<=w*4)plots.push({sqft:Math.round(w*d),w,d,raw:`${w} × ${d} ft (edge dimensions)`,conf:.6,line:null});}}
  const plot=plots.sort((a,b)=>b.conf-a.conf)[0]||null;
  const stats={lines:L.length,rooms:outRooms.length,sized:outRooms.filter(r=>r.sqft).length,units:outUnits.length,floors:floorList.length};
  return {floorAreas:outFA,rooms:outRooms,units:outUnits,floors:floorList,levels,gross:gross.map(g=>({sqft:g.sqft,raw:g.raw,page:g.line.page,used:!!g.used})),floorNames:floors.map(f=>f.name),plot:plot&&{sqft:plot.sqft,value:plot.value||null,unit:plot.unit||null,w:plot.w||null,d:plot.d||null,raw:plot.raw,conf:+plot.conf.toFixed(2)},covered:covered.map(c=>({sqft:c.sqft,raw:c.raw,conf:+c.conf.toFixed(2),floor:(assign(c)||{}).name||null})),wallFactor:wf,stats,little:stats.sized<2&&!plot&&!outUnits.length&&!outFA.length,text:raw.join('\n')};}
