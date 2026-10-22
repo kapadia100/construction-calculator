@@ -78,6 +78,7 @@ const DEFAULT_SETTINGS={
  margin:10, tax:0, contingency:5, designPct:2, approvalFee:150000,
  items:ITEMS,
  hr:null,
+ tiers:{house:{E:'',M:'',P:''},building:{E:'',M:'',P:''}}, // PKR per sq ft covered, set by the user (blank = use the detailed rates)
  pay:[{name:'Booking / mobilisation',pct:10,weeks:1},{name:'Excavation & foundation',pct:10,weeks:3},{name:'Ground floor structure & slab',pct:15,weeks:6},{name:'Upper floor structure & slab',pct:15,weeks:6},{name:'Brickwork & plaster',pct:15,weeks:6},{name:'Electrical & plumbing',pct:10,weeks:4},{name:'Flooring, tiles & doors',pct:12,weeks:5},{name:'Paint & woodwork',pct:8,weeks:4},{name:'Handover & snag list',pct:5,weeks:2}]
 };
 function clone(o){return JSON.parse(JSON.stringify(o));}
@@ -87,10 +88,14 @@ function unitSqft(u,s){return u==='sqyd'?9:u==='marla'?(+s.marlaSqft||225):1;}
 function floorAreas(p){const n=Math.max(1,Math.floor(+p.floors||1)),a=[];for(let i=0;i<n;i++){const o=p.override&&p.floorAreas?p.floorAreas[i]:null;a.push(o!=null&&o!==''?+o:+p.bua||0);}return a;}
 function floorsOf(p,s){const rate=s.cats[p.quality]||s.cats.B,full=p.scope!=='grey',areas=floorAreas(p),fl=[];
  const base=rate.grey+(full?rate.finish:0);
- if(p.extra==='basement'||p.extra==='stilt'){const pc=p.extra==='basement'?+s.basementPct:+s.stiltPct;fl.push({id:p.extra,name:p.extra==='basement'?'Basement':'Stilt parking',area:areas[0]||0,rate:base*(1+pc/100),grey:rate.grey*(1+pc/100)});}
+ if(p.extra==='basement'||p.extra==='stilt'){const pc=p.extra==='basement'?+s.basementPct:+s.stiltPct;fl.push({id:p.extra,name:p.extra==='basement'?'Basement':'Stilt parking',area:p.extra==='basement'&&+p.basementArea>0?+p.basementArea:(areas[0]||0),rate:base*(1+pc/100),grey:rate.grey*(1+pc/100)});}
  areas.forEach((a,i)=>{const adj=i===0?+s.groundAdj:+s.upperExtra*i;fl.push({id:'f'+i,idx:i,name:i===0?'Ground floor':'Floor '+i,area:a,rate:base*(1+adj/100),grey:rate.grey*(1+adj/100)});});
- fl.forEach(f=>{f.cost=f.area*f.rate;f.greyCost=f.area*f.grey;f.finishCost=f.cost-f.greyCost;});return fl;}
-function estimate(p,s){if(p.mode==='highrise'){const H=HRm(),c=H.calc(p.hr||H.DEFAULT_HR,s.hr||H.HR_RATES),sh=((s.hr||H.HR_RATES).structShare||45)/100;const grey=c.construction*sh;
+ const tr=tierRate(p,s);fl.forEach(f=>{if(tr){const sh=f.rate>0?f.grey/f.rate:.55;f.rate=tr;f.grey=tr*sh;f.tier=true;}f.cost=f.area*f.rate;f.greyCost=f.area*f.grey;f.finishCost=f.cost-f.greyCost;});return fl;}
+// user's own all-in rate per sq ft for the chosen tier (Economy / Medium / Premium); null when not set
+function tierRate(p,s){const t=p.tier||'M',T=(s&&s.tiers)||{},r=+((T[p.mode==='highrise'?'building':'house']||{})[t]);return r>0?r:null;}
+const TIER_NAMES={E:'Economy',M:'Medium',P:'Premium'};
+function tierCost(p,s){const t=p.tier||'M',rate=tierRate(p,s),e=estimate(p,s),fl=(e.floors||[]).map(f=>({name:f.label||f.name,area:Math.round(+f.area||0)})).filter(f=>f.area>0);fl.forEach(f=>f.cost=rate?f.area*rate:null);const area=fl.reduce((a,f)=>a+f.area,0);return {tier:t,tierName:TIER_NAMES[t],rate,floors:fl,area,total:rate?area*rate:null};}
+function estimate(p,s){if(p.mode==='highrise'){const H=HRm(),tr=tierRate(p,s),c=H.calc(p.hr||H.DEFAULT_HR,tr?Object.assign({},s.hr||H.HR_RATES,{tierRate:tr}):(s.hr||H.HR_RATES)),sh=((s.hr||H.HR_RATES).structShare||45)/100;const grey=c.construction*sh;
   return Object.assign(c,{mode:'highrise',totalArea:c.gross,construction:c.hard,grey,finish:c.hard-grey,perSqft:c.gross?c.buildTotal/c.gross:0});}
  const fl=floorsOf(p,s),w=[],nUp=floorAreas(p).length;
  const totalArea=fl.reduce((t,f)=>t+f.area,0);let construction=fl.reduce((t,f)=>t+f.cost,0);
@@ -128,6 +133,6 @@ function toCSV(rows){const q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=[['Floor'
  rows.forEach(r=>L.push([r.floor,r.s,r.c,r.t,r.n,r.u,r.qty,r.rate,r.amt.toFixed(0)].map(q).join(',')));const T=totals(rows);
  [['GREY STRUCTURE TOTAL',T.grey],['FINISHING TOTAL',T.finish],['BOQ TOTAL',T.total]].forEach(([a,b])=>L.push(['','','','',a,'','','',b.toFixed(0)].map(q).join(',')));return L.join('\n');}
 DEFAULT_SETTINGS.hr=JSON.parse(JSON.stringify((HRm()||{}).HR_RATES||{}));
-const api={RATES_DATE,STAGES,DEFAULT_SETTINGS,clone,pkr,words,unitSqft,floorAreas,floorsOf,estimate,boqDefaults,boq,totals,materials,schedule,toCSV};
+const api={tierRate,tierCost,TIER_NAMES,RATES_DATE,STAGES,DEFAULT_SETTINGS,clone,pkr,words,unitSqft,floorAreas,floorsOf,estimate,boqDefaults,boq,totals,materials,schedule,toCSV};
 if(typeof module!=='undefined')module.exports=api;else root.Calc=api;
 })(this);

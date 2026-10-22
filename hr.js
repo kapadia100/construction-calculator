@@ -86,6 +86,7 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  const reqRes=unitRows.reduce((a,u)=>a+u.park,0),reqComm=h.commPark>0?commGross/h.commPark:0,required=Math.ceil(reqRes+reqComm);
  const parkArea=floors.filter(f=>f.type==='basement'||f.type==='parking').reduce((a,f)=>a+f.area,0),provided=Math.floor(parkArea*h.parkEff/100/(h.carArea||350));
  if(provided<required)w.push(`Parking short: ${required} spaces required, ${provided} provided. Add basement/podium floors or reduce units.`);
+ if(+R.tierRate>0)floors.forEach(f=>{f.rate=+R.tierRate;f.cost=(+f.area||0)*f.rate;f.tier=true;});
  const construction=floors.reduce((a,f)=>a+f.cost,0);
  const lifts=above>0?Math.max(+h.lifts||Math.max(R.minLifts,Math.ceil(totalUnits/(R.unitsPerLift||40))),0):0,stops=totalFloors;
  const ex={lifts:lifts*(R.liftCost+R.liftPerStop*stops),fire:gross*R.fire,security:gross*R.security,generator:(totalUnits*R.kvaPerUnit+commGross*R.kvaPerCommSqft)*R.kvaRate,water:totalUnits*R.waterPerUnit};

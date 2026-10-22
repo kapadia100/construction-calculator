@@ -64,8 +64,17 @@ function unitIn(s){s=norm(s);let m,u=null;
  const t=s.match(/\b(?:type|unit|flat|apartment|apt)(?:\s*[-:#]\s*|\s+)(?!x\s*\d)([A-Z]\d?|\d{1,2}[A-Z]?)\b(?!\s*\/)/i);if(t&&/[A-Z]/i.test(t[1])){u=u||{beds:null,name:''};u.type=t[1].toUpperCase();u.name=(u.name?u.name+' – ':'')+'Type '+u.type;}
  if(!u)return null;const c=s.match(/(?:\bx\s*|\()\s*(\d{1,2})\s*(?:units?|flats?|nos?\.?|apartments?)?\)?(?!\s*['"\d.])|\b(\d{1,2})\s*(?:units?|flats?|nos\.?|apartments?)\b(?!\s*per\s*(?:floor)?\s*x)/i);
  if(c)u.count=+(c[1]||c[2]);const pf=s.match(/(\d{1,2})\s*(?:units?|flats?)?\s*(?:per|\/)\s*floor/i);if(pf)u.count=+pf[1];return u;}
-function plotIn(s,marla){const t=norm(s);if(!/\b(plot|site)\b/i.test(t))return null;const d=dims(t)[0],a=areas(t,marla)[0];
- if(a)return {sqft:a.sqft,value:a.value,unit:a.unit,raw:a.raw,conf:.9};if(d)return {sqft:+(d.w*d.d).toFixed(1),w:d.w,d:d.d,raw:d.raw,conf:.85};
+// 4-sided plot area: diagonal -> two triangles (Heron); road and back parallel -> trapezoid; else average width x average depth
+function quadArea(o){const f=+o.front||0,b=+o.back||0,l=+o.left||0,r=+o.right||0,g=+o.diag||0;if(!(f>0&&b>0&&l>0&&r>0))return null;
+ const her=(a,c,e)=>{const s=(a+c+e)/2,v=s*(s-a)*(s-c)*(s-e);return v>0?Math.sqrt(v):null;};
+ if(g>0){const t1=her(b,r,g),t2=her(f,l,g);if(t1&&t2)return {sqft:t1+t2,method:'diagonal'};}
+ const e=Math.abs(f-b);if(e>0.01){const c=l,d=r,x=(e*e+c*c-d*d)/(2*e);if(c*c-x*x>0&&e<c+d&&c<e+d&&d<e+c)return {sqft:(f+b)/2*Math.sqrt(c*c-x*x),method:'trapezoid'};}
+ return {sqft:(f+b)/2*(l+r)/2,method:'average'};}
+function plotIn(s,marla){let t=norm(s).replace(/([(\s])[\[\/|lI!]\s?(\d{3})\b/g,'$11$2').replace(/\(?\s*(\d{3,6}(?:\.\d+)?)\s*\)?\s*s\s*\.?\s*y(?:ar)?ds?\b\.?/i,'$1 sq yd');
+ const tot=t.match(/total\s*area\s*of\s*(?:the\s*)?p[a-z]{1,3}t\D{0,8}(\d{3,6})\b(?!\s*(?:sq|sft|s\.?f|ft|m\b))/i);if(tot)return {sqft:+tot[1]*9,value:+tot[1],unit:'sqyd',raw:tot[0],conf:.85,official:true};
+ if(/\barea\b/i.test(t)&&/\d\s*sq yd/i.test(t)&&!/\bplot\b/i.test(t)){const a=areas(t,marla)[0];if(a&&a.unit==='sqyd'&&a.value>=40)return {sqft:a.sqft,value:a.value,unit:a.unit,raw:a.raw,conf:.85,official:true};}
+ if(!/\b(plot|site)\b/i.test(t))return null;const d=dims(t)[0],a=areas(t,marla)[0];
+ if(a)return {sqft:a.sqft,value:a.value,unit:a.unit,raw:a.raw,conf:.9,official:a.unit==='sqyd'};if(d)return {sqft:+(d.w*d.d).toFixed(1),w:d.w,d:d.d,raw:d.raw,conf:.85};
  const mm=t.match(/(\d+(?:\.\d+)?)\s*marla/i);if(mm)return {sqft:+mm[1]*(marla||225),value:+mm[1],unit:'marla',raw:mm[0],conf:.8};return null;}
 function coveredIn(s){const t=norm(s);if(!/(covered|built[-\s]*up|floor\s*area|total\s*area|plinth)/i.test(t)||/\bplot\b/i.test(t))return null;const a=areas(t)[0];return a?{sqft:a.sqft,raw:a.raw}:null;}
 const MAXS={hall:70,pool:80,plant:20,platform:40,void:40,bath:16,terrace:50,lift:25,stair:30,lobby:40,corridor:80,store:20,dress:16,servant:20,laundry:16,prayer:20,study:25,kitchen:30,bedroom:35,drawing:40,dining:35,lounge:45,shop:120,parking:120,lawn:150};
@@ -138,7 +147,7 @@ function parse(lines,opts){opts=opts||{};const marla=opts.marla||225,wf=opts.wal
  rooms.filter(r=>!r.dim&&!r.area).forEach(r=>{let best=null,bd=1e9;free.forEach(f=>{if(f.used||f.line.page!==r.line.page||(f.line.frame||0)!==(r.line.frame||0))return;const lh=Math.max(r.line.h||12,8);let dy=f.line.y-r.line.y,dx=Math.abs(cx(f.line)-cx(r.line));
    const tg=f.tag&&f.tag===r.type;if(!r.line.geo){if(f.line.i!==r.line.i+1&&!(tg&&f.line.i>r.line.i&&f.line.i<=r.line.i+3))return;dy=f.line.i-r.line.i;dx=0;}else if(tg){if(dy<0||dy>14*lh||dx>Math.max(r.line.w||0,f.line.w||0)*1.5)return;dy=dy/4;}else{if(dy<-1.6*lh||dy>3.6*lh||dx>Math.max(r.line.w||0,f.line.w||0,lh*4))return;}
    const sc=Math.abs(dy)*(dy<0?2:1)+dx;if(sc<bd){bd=sc;best=f;}});
-  if(best){best.used=true;r[best.kind==='dim'?'dim':'area']=best.v;r.paired=true;}});
+  if(best){best.used=true;r[best.kind==='dim'?'dim':'area']=best.v;r.paired=true;r.vline=best.line;}});
  // a sheet with a title block ("GROUND FLOOR PLAN") belongs to that floor: drop stray words like "Podium 10' Wide" as floor headings there
  {const titled=new Set(floors.filter(f=>/plan/i.test(f.line.text)).map(f=>f.line.page));for(let i=floors.length-1;i>=0;i--){const f=floors[i];if(titled.has(f.line.page)&&!/plan|floor|level|flr/i.test(f.line.text))floors.splice(i,1);}}
  // floors: which floor heading each item belongs to
@@ -150,7 +159,7 @@ function parse(lines,opts){opts=opts||{};const marla=opts.marla||225,wf=opts.wal
   const sorted=fs.slice().sort((a,b)=>a.line.y-b.line.y);if(below){return sorted.find(f=>f.line.y>=it.line.y)||sorted[sorted.length-1];}
   let cur=sorted[0];sorted.forEach(f=>{if(f.line.y<=it.line.y)cur=f;});return cur;};
  const outRooms=rooms.map(r=>{const fl=assign(r);let sqft=null,conf=.35*r.oc;if(r.dim){sqft=r.dim.w*r.dim.d;conf=(r.dim.marks?.9:.75)*(plausible(r.dim.w,r.dim.d,r.type)?1:.3)*(r.paired?.92:1)*r.oc;}else if(r.area){sqft=r.area.sqft;conf=.8*(r.paired?.9:1)*r.oc;}
-  return {name:r.label,type:r.type,w:r.dim?r.dim.w:null,d:r.dim?r.dim.d:null,sqft:sqft!=null?+sqft.toFixed(1):null,metric:!!(r.dim&&r.dim.metric),floor:fl?fl.name:'Ground floor',level:fl&&fl.level!=null?fl.level:0,floorKind:fl&&fl.kind||null,conf:+conf.toFixed(2),raw:(r.line.text||'').trim(),page:r.line.page||0,box:r.line.geo?{x:r.line.x,y:r.line.y,w:r.line.w,h:r.line.h,page:r.line.page}:null};});
+  return {name:r.label,type:r.type,w:r.dim?r.dim.w:null,d:r.dim?r.dim.d:null,sqft:sqft!=null?+sqft.toFixed(1):null,metric:!!(r.dim&&r.dim.metric),floor:fl?fl.name:'Ground floor',level:fl&&fl.level!=null?fl.level:0,floorKind:fl&&fl.kind||null,conf:+conf.toFixed(2),zoom:!!((r.vline||r.line)&&(r.vline||r.line).zoom&&(r.dim||r.area)),raw:(r.line.text||'').trim(),page:r.line.page||0,box:r.line.geo?{x:r.line.x,y:r.line.y,w:r.line.w,h:r.line.h,page:r.line.page}:null};});
  // unit types: merge duplicates per floor, counting labels when no explicit count
  const um={};units.forEach(u=>{if(u.fromTable){const k='Typical floor|'+u.name;const o=um[k]||(um[k]={name:u.name,beds:u.beds,type:u.type||null,top:!!u.top,floor:'Typical floor',count:u.count||null,explicit:!!u.count,sqft:u.sqft,areas:u.areas,conf:u.countMissing?Math.min(u.conf,.45):u.conf,fromTable:true,page:u.line?u.line.page:null,countMissing:!!u.countMissing});return;}const fl=assign(u),fn=fl?fl.name:'Typical floor',k=fn+'|'+u.name;const o=um[k]||(um[k]={name:u.name,beds:u.beds,type:u.type||null,top:!!u.top||!!(fl&&fl.kind==='top'),floor:fn,count:0,explicit:false,sqft:null,conf:0,page:u.line.page});
   if(u.count){o.count=Math.max(o.explicit?o.count:0,u.count);o.explicit=true;}else if(!o.explicit)o.count++;if(u.sqft&&!o.sqft){o.sqft=u.sqft;o.areas=u.areas;}o.conf=Math.max(o.conf,u.conf*(u.count||o.count>1?1:.85));});
@@ -175,13 +184,35 @@ function parse(lines,opts){opts=opts||{};const marla=opts.marla||225,wf=opts.wal
  // a single floor that sits inside a range read elsewhere ("First floor" vs "1st–10th floor") is the same floor: keep the range
  Object.keys(faMap).forEach(k=>{const f=faMap[k];if((f.count||1)>1||f.level==null)return;const rg=Object.values(faMap).find(g=>g!==f&&(g.count||1)>1&&f.level>=g.level&&f.level<=g.level+g.count-1);if(rg){rg.pages=[...new Set(rg.pages.concat(f.pages))];rg.dups=(rg.dups||0)+1+(f.dups||0);rg.merged=(rg.merged||[]).concat(f.floor+' '+Math.round(f.sqft)+' sq ft');delete faMap[k];}});
  const outFA=Object.values(faMap).sort((a,b)=>a.level-b.level).map(f=>({floor:f.floor,level:f.level,count:f.count||1,sqft:f.sqft,each:!!f.each,kind:f.kind||null,use:f.use||null,conf:+(+f.conf).toFixed(2),raw:f.raw,from:f.from||'text',page:f.line?f.line.page:null,pages:f.pages,dups:f.dups||0,merged:f.merged||null}));
- if(!plots.some(x=>x.sqft)){const hasPlot=lines.some(l=>/\bplot\s*no\b|\bplot\b/i.test(l.text||''));
-  const one=t=>{const s=String(t||'').replace(/[’`´]/g,"'").replace(/(\d{2,3})\s*-\s*(\d{1,2})\s*"/g,"$1'-$2\"");if(/\d\s*[xX×*]\s*\d/.test(s))return null;const m=s.match(/(?:^|[^\d'])(\d{2,3})\s*'\s*-?\s*(\d{1,2})?\s*"?/);if(!m)return null;const v=+m[1]+(+(m[2]||0))/12;return v>=40&&v<=400&&(+(m[2]||0))<12?+v.toFixed(2):null;};
-  const W=lines.filter(l=>!l.edge).map(l=>one(l.text)).filter(Boolean).sort((a,b)=>a-b),D=lines.filter(l=>l.edge).map(l=>one(l.text)).filter(Boolean);
-  if(hasPlot&&W.length&&D.length){const w=W[Math.floor((W.length-1)/2)],d=Math.max(...D);if(d>=w*.5&&d<=w*4)plots.push({sqft:Math.round(w*d),w,d,raw:`${w} × ${d} ft (edge dimensions)`,conf:.6,line:null});}}
- const plot=plots.sort((a,b)=>b.conf-a.conf)[0]||null;
+ // plot sides from the drawing borders: top = back, bottom = road/front, left/right (sideways text), optional diagonal
+ {const hasPlot=lines.some(l=>/\bplot\b/i.test(l.text||''));
+  const one=t=>{let s=String(t||'').replace(/[’`´:]/g,"'").replace(/''+/g,"'");if(/\d\s*[xX×*]\s*\d|road|wide|scale|=/i.test(s))return null;s=s.replace(/(\d{2,3})\s*-\s*(\d{1,2})\s*("|$|\s)/g,"$1'-$2\"$3");const m=s.match(/(?:^|[^\d'])(\d{2,3})\s*'\s*-?\s*(\d{1,2})?\s*"?/);if(!m)return null;const v=+m[1]+(+(m[2]||0))/12;return v>=40&&v<=400&&(+(m[2]||0))<12?+v.toFixed(2):null;};
+  const C=[];lines.forEach(l=>{const v=one(l.text);if(v)C.push({v,l});});
+  if(hasPlot&&C.length>=2){const ext={};lines.forEach(l=>{if(l.edge||(l.frame||0))return;const e=ext[l.page]||(ext[l.page]={y0:1e9,y1:-1e9,x0:1e9,x1:-1e9});e.y0=Math.min(e.y0,l.y);e.y1=Math.max(e.y1,l.y+(l.h||0));e.x0=Math.min(e.x0,l.x);e.x1=Math.max(e.x1,l.x+(l.w||0));});
+   const T=[],B=[],SL=[],SR=[],SU=[];C.forEach(({v,l})=>{const e=ext[l.page];if(l.edge){(l.x<50?SL:SR).push(v);return;}if(l.frame){if(e&&l.frame===1)SL.push(v);else if(e&&l.frame===3)SR.push(v);else SU.push(v);return;}
+    if(!e)return;const ry=(l.y-e.y0)/Math.max(1,e.y1-e.y0);(ry<.5?T:B).push(v);});
+   const sides=SL.concat(SR,SU);const back=T.length?T.sort((a,b)=>a-b)[Math.floor((T.length-1)/2)]:null;
+   let front=B.length?B.slice().sort((a,b)=>Math.abs(a-(back||a))-Math.abs(b-(back||b)))[0]:null;const w0=back||front;
+   if(w0&&sides.length){const dmax=Math.max(...sides.filter(v=>v<w0*3.2));const diagC=sides.filter(v=>v>dmax*1.05&&Math.abs(v-Math.hypot(w0,dmax))<Math.hypot(w0,dmax)*.12);
+    const dep=sides.filter(v=>!diagC.includes(v)&&v>=w0*.4);const lf=SL.filter(v=>dep.includes(v)),rt=SR.filter(v=>dep.includes(v));
+    let left=lf.length?Math.max(...lf):Math.max(...dep),right=rt.length?Math.max(...rt):(dep.filter(v=>v!==left).sort((a,b)=>b-a)[0]||left);
+    const S={front:front||back,back:back||front,left,right,diag:diagC[0]||null},q=quadArea(S);
+    if(q&&q.sqft>0)plots.push({sqft:Math.round(q.sqft),w:S.back,d:Math.max(left,right),sides:S,method:q.method,raw:`sides ${S.front} / ${S.back} / ${S.left} / ${S.right} ft${S.diag?' + diagonal '+S.diag:''} (${q.method})`,conf:.6,line:null,fromSides:true});}}}
+ // handwritten "(1508) S.Yds" under an AREA label often reads as "/508)" ("1" seen as a slash): use it as one more reading of the stated area
+ if(plots.some(x=>x.official)){const pgA=new Set(L.filter(l=>/^\W*a\s?r?\s?e\s?a\W*$|\b(?:n?re\s?a|are\s?a)\b/i.test(l.text||'')&&!/total/i.test(l.text||'')).map(l=>l.page));
+  L.forEach(l=>{if(!pgA.has(l.page))return;const m=String(l.text||'').match(/^\W{0,2}[\[\/|lI!]\s?(\d{3})\s*\)/);if(m)plots.push({sqft:+('1'+m[1])*9,value:+('1'+m[1]),unit:'sqyd',raw:'AREA ('+'1'+m[1]+') S.Yds',conf:.5,official:true,line:l,areaLine:true});});}
+ // several readings of one stated area: vote digit by digit (readings that start with a different digit are misaligned and skipped)
+ const voteArea=offs=>{const v=offs.filter(x=>String(x.value).length===4);if(v.length<2)return null;const w=x=>(x.line&&x.line.conf!=null?x.line.conf:60)/100+(x.areaLine?.2:0);
+  const pick=i=>{const t={};v.forEach(x=>{const d=String(x.value)[i];t[d]=(t[d]||0)+w(x);});return Object.entries(t).sort((a,b)=>b[1]-a[1])[0][0];};const d0=pick(0),vv=v.filter(x=>String(x.value)[0]===d0);
+  let s='';for(let i=0;i<4;i++){const t={};vv.forEach(x=>{const d=String(x.value)[i];t[d]=(t[d]||0)+w(x);});s+=Object.entries(t).sort((a,b)=>b[1]-a[1])[0][0];}return +s;};
+ // stated (official) area wins; the side calculation is kept as a cross-check
+ {const offs=plots.filter(x=>x.official&&x.sqft),vals=[...new Set(offs.map(x=>Math.round(x.sqft)))],off=offs.sort((a,b)=>b.conf-a.conf)[0],sd=plots.find(x=>x.fromSides);if(off){off.conf=off.line&&off.line.conf!=null&&off.line.conf<75?.45:Math.max(off.conf,.9);
+  // the same stated area read differently by different zoom passes (handwriting): pick the one closest to the side calculation, and mark it to check
+  if(vals.length>1&&Math.max(...vals)>Math.min(...vals)*1.01){const vs=offs.map(x=>x.sqft).sort((a,b)=>a-b),med=vs[Math.floor((vs.length-1)/2)]/2+vs[Math.ceil((vs.length-1)/2)]/2,vt=voteArea(offs),ref=sd?sd.sqft:(vt?vt*9:med),pick=Object.assign({},(vt&&(!sd||Math.abs(vt*9-sd.sqft)/sd.sqft<=.02))?{sqft:vt*9,value:vt,unit:'sqyd',raw:'stated area '+vt+' sq yd (digit vote)'}:offs.slice().sort((a,b)=>Math.abs(a.sqft-ref)-Math.abs(b.sqft-ref))[0]);Object.assign(off,pick,{conf:.45,raw:pick.raw+' (readings differ: '+[...new Set(offs.map(x=>x.value))].join(' / ')+' sq yd)'});}if(sd){off.sides=sd.sides;off.method=sd.method;off.sidesSqft=sd.sqft;off.diffPct=+((sd.sqft-off.sqft)/off.sqft*100).toFixed(1);sd.conf=.1;}}}
+ {const offs=plots.filter(x=>x.official&&x.sqft);if(offs.length>1){const keep=offs.find(x=>String(x.raw).includes('readings differ'))||offs.slice().sort((a,b)=>b.conf-a.conf)[0];offs.forEach(x=>{if(x!==keep)x.conf=0;});keep.conf=Math.max(keep.conf,.01);}}
+ const plot=plots.filter(x=>x.conf>0).sort((a,b)=>b.conf-a.conf)[0]||null;
  const stats={lines:L.length,rooms:outRooms.length,sized:outRooms.filter(r=>r.sqft).length,units:outUnits.length,floors:floorList.length};
- return {floorAreas:outFA,rooms:outRooms,units:outUnits,floors:floorList,levels,gross:gross.map(g=>({sqft:g.sqft,raw:g.raw,page:g.line.page,used:!!g.used})),floorNames:floors.map(f=>f.name),plot:plot&&{sqft:plot.sqft,value:plot.value||null,unit:plot.unit||null,w:plot.w||null,d:plot.d||null,raw:plot.raw,conf:+plot.conf.toFixed(2)},covered:covered.map(c=>({sqft:c.sqft,raw:c.raw,conf:+c.conf.toFixed(2),floor:(assign(c)||{}).name||null})),wallFactor:wf,stats,little:stats.sized<2&&!plot&&!outUnits.length&&!outFA.length,text:raw.join('\n')};}
-const api={parse,rowsOf,tables,floorAreaIn,dims,areas,floorOf,unitIn,roomsIn,plotIn,norm,FT_PER_M};
+ return {floorAreas:outFA,rooms:outRooms,units:outUnits,floors:floorList,levels,gross:gross.map(g=>({sqft:g.sqft,raw:g.raw,page:g.line.page,used:!!g.used})),floorNames:floors.map(f=>f.name),plot:plot&&{sides:plot.sides||null,method:plot.method||null,sidesSqft:plot.sidesSqft||null,diffPct:plot.diffPct!=null?plot.diffPct:null,official:!!plot.official,sqft:plot.sqft,value:plot.value||null,unit:plot.unit||null,w:plot.w||null,d:plot.d||null,raw:plot.raw,conf:+plot.conf.toFixed(2)},covered:covered.map(c=>({sqft:c.sqft,raw:c.raw,conf:+c.conf.toFixed(2),floor:(assign(c)||{}).name||null})),wallFactor:wf,stats,little:stats.sized<2&&!plot&&!outUnits.length&&!outFA.length,text:raw.join('\n')};}
+const api={quadArea,parse,rowsOf,tables,floorAreaIn,dims,areas,floorOf,unitIn,roomsIn,plotIn,norm,FT_PER_M};
 if(typeof module!=='undefined'&&module.exports)module.exports=api;else root.LP=api;
 })(typeof self!=='undefined'?self:this);

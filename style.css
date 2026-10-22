@@ -196,3 +196,8 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 .layQ .qInfo{min-width:0;display:flex;flex-direction:column;gap:2px}.layQ .qInfo b{overflow-wrap:anywhere}.layQ .layRm{width:44px;height:44px;min-height:44px;font-size:1.1rem}
 .layBar{flex-wrap:wrap;gap:8px}.layBar .layScan{flex:1 1 220px;min-height:48px;font-size:1.02rem}.layAdd{min-height:44px;display:inline-flex;align-items:center}.srcF{color:#1e3a8a!important}.layProg .pfile{font-weight:700;margin:2px 0}
 .toast{pointer-events:none}.toast button{pointer-events:auto}
+.tierRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+.tierCost{margin-top:8px}.tierCost table{width:100%}
+.detSum{margin-top:6px;line-height:1.7}
+.conf.zoom{background:#e0f2fe;color:#075985}
+.tierSet input{width:100px}
