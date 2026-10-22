@@ -201,3 +201,6 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 .detSum{margin-top:6px;line-height:1.7}
 .conf.zoom{background:#e0f2fe;color:#075985}
 .tierSet input{width:100px}
+.saleRow{border-top:1px solid var(--line,#e2e8f0);padding:8px 0}.saleRow .chips{margin:6px 0}.saleX{align-items:flex-end}.saleT td:last-child{text-align:right;white-space:nowrap}.saleT .tot td{border-top:1px solid var(--line,#cbd5e1)}.saleT .neg{color:#b91c1c}.saleT .pos{color:#15803d}#saleAdd{margin-top:6px}
+.saleT{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:8px}.saleT td{padding:6px 4px;border-bottom:1px solid var(--soft);vertical-align:top}.saleT td:first-child{white-space:normal}
+.saleT{table-layout:fixed;display:table}.saleT tbody{display:table-row-group}.saleT tr{display:table-row}.saleT td{display:table-cell}.saleT td:first-child{width:58%}

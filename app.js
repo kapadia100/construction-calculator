@@ -70,7 +70,7 @@ document.addEventListener('input',e=>{const t=e.target;if(t.id==='irrOn'){const 
  if(t.dataset&&t.dataset.irr){const p=P();p.irr=p.irr||{on:true};p.irr[t.dataset.irr]=t.value===''?'':num(t.value);irrApply();save();renderEstimate();renderIrrRes();}});
 function renderIrrRes(){const y=document.activeElement&&document.activeElement.dataset?document.activeElement.dataset.irr:null;renderIrr();if(y){const el=document.querySelector(`[data-irr="${y}"]`);if(el){el.focus();const v=el.value;el.setSelectionRange&&el.setSelectionRange(v.length,v.length);}}}
 const COLORS=['#1e3a5f','#f59e0b','#64748b','#0ea5e9','#94a3b8','#b45309','#16a34a'];
-function renderEstimate(){try{renderTier();}catch(_){}if(P().mode==='highrise'){renderHROut();return;}const p=P(),s=S(),e=C.estimate(p,s);
+function renderEstimate(){try{renderTier();}catch(_){}try{window.SALES&&SALES.render();}catch(_){}if(P().mode==='highrise'){renderHROut();return;}const p=P(),s=S(),e=C.estimate(p,s);
  $('#grand').textContent=fmt(e.grand);$('#perSqft').textContent=C.words(e.grand)+' · building '+fmt(e.perSqft)+' / sq ft covered · plot '+(e.plotSqft?Math.round(e.plotSqft).toLocaleString('en-US')+' sq ft':'—');
  const parts=[['Plot',e.plot],['Grey structure',e.grey],['Finishing',e.finish],['Margin',e.margin],['Contingency',e.contingency],['Design & approval',e.design],['Tax',e.tax]].filter(x=>x[1]>0);
  const tot=parts.reduce((a,b)=>a+b[1],0)||1;let off=25,svg='<circle cx="21" cy="21" r="15.9" fill="none" stroke="#e2e8f0" stroke-width="6"/>';
