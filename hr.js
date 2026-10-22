@@ -21,9 +21,12 @@ const UNIT_TYPES=[
  {id:'b4',name:'4 Bed',beds:4,size:1900,perFloor:0,park:2},
  {id:'ph',name:'Penthouse',beds:4,size:3000,perFloor:1,park:2,top:true}
 ];
+// service area: 'add' = % added on sellable (gross = sellable x (1+%)); 'gross' = % of gross (gross = sellable / (1-%))
+function svcGross(net,pct,mode){pct=Math.max(0,+pct||0);return mode==='gross'?net/(1-Math.min(pct,90)/100):net*(1+pct/100);}
+function commFrac(h){const v=h.commSvcPct;if(v===''||v==null)return (+h.commEff||75)/100;const p=Math.max(0,+v||0);return h.svcMode==='gross'?1-Math.min(p,90)/100:1/(1+p/100);}
 const DEFAULT_HR={plotArea:1000,plotUnit:'sqyd',plotW:0,plotD:0,plotPrice:150000000,plotPriceMode:'total',
  far:8,coverage:65,setFront:20,setRear:10,setSide:10,farExclParking:true,
- basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commonPct:15,commEff:75,
+ basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commonPct:15,svcMode:'add',commSvcPct:'',commEff:75,
  units:UNIT_TYPES,commPark:1000,carArea:320,parkEff:85,lifts:0,
  sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[],groundUse:'parking',qTotal:0};
 // fresh projects start blank: only rates / by-law coefficients keep defaults
@@ -36,8 +39,8 @@ function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.pl
  const footprint=bw*bd,covMax=plotSqft*h.coverage/100,autoPlate=Math.min(footprint,covMax);
  const ut=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0&&+t.size>0),net=ut.reduce((a,t)=>a+(+t.size)*(+t.perFloor),0),cp=h.commonPct===''||h.commonPct==null?15:Math.max(0,+h.commonPct||0);
  // plate left empty: build it from the flats (units x size + common area %); only fall back to setbacks / coverage when there are no flat sizes
- const src=+h.plate>0?'user':net>0?'flats':'auto',plate=src==='user'?+h.plate:src==='flats'?Math.round(net*(1+cp/100)):autoPlate;
- return{plateSrc:src,net,commonPct:cp,units:ut,plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
+ const sm=h.svcMode==='gross'?'gross':'add',src=+h.plate>0?'user':net>0?'flats':'auto',plate=src==='user'?+h.plate:src==='flats'?Math.round(svcGross(net,cp,sm)):autoPlate;
+ return{plateSrc:src,net,commonPct:cp,svcMode:sm,units:ut,plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
 // "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
 function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/[\u00a0\u2009\u202f]/g,' ').replace(/(\d),(\d{3})(?!\d)/g,'$1$2').replace(/(\d),(\d{1,2})(?!\d)/g,'$1.$2').replace(/,/g,'').replace(/[–—−]/g,'-').replace(/[‘`´]/g,"'").replace(/[“]/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
  if(/-\s*\d+\s*(x|×|\*|by)|^-/.test(t.replace(/'\s*-\s*\d/g,"'"))&&/^-|[x×*]\s*-/.test(t))return null;
@@ -53,7 +56,7 @@ function parseList(v){const t=String(v==null?'':v).toLowerCase().replace(/[\u00a
  t.split(/[;\n\/+&]|,\s+|\s+|\band\b/).forEach(tok=>{tok=tok.trim();if(!tok)return;let parts=[tok];const th=tok.replace(/,/g,'');if(/,/.test(tok)&&!(/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(tok)&&+th<=100000))parts=tok.split(',');
   parts.forEach(x=>{x=x.replace(/,/g,'');if(/^\d*\.?\d+$/.test(x)&&+x>0)out.push(+x);});});return out;}
 function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=parseList(h.shopList);
- if(list.length)return list;if(!n||!g)return [];const eff=(+h.commEff||75)/100;return Array.from({length:n},()=>Math.round(g*eff/n));}
+ if(list.length)return list;if(!n||!g)return [];const eff=commFrac(h);return Array.from({length:n},()=>Math.round(g*eff/n));}
 function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  if(h.uSizeAuto&&(h.units||[]).length===1&&+h.units[0].perFloor>0){const pl0=geom(h).plate;h=Object.assign({},h,{units:[Object.assign({},h.units[0],{size:Math.round(pl0*(1-(+h.corePct||0)/100)/(+h.units[0].perFloor))})]});}const g=geom(h),w=[],plate=g.plate;
  const nB=Math.max(0,+h.basements|0),nP=Math.max(0,+h.podium|0),nC=Math.max(0,+h.commercial|0),nR=Math.max(0,+h.residential|0);
@@ -78,7 +81,7 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  // user-chosen built areas: ground floor (level 0) and each commercial floor
  floors.forEach(f=>{if(f.type==='commercial'&&h.commAuto===false){const v=+(h.commAreas||[])[+f.key.slice(1)];if(v>0)f.area=v;}if(f.lvl===0&&h.groundAuto===false&&+h.groundArea>0)f.area=+h.groundArea;});
  const ground=floors.find(f=>f.lvl===0);if(ground&&h.groundAuto===false){if(ground.area>g.plotSqft+1)w.push(`Ground floor area (${Math.round(ground.area)} sq ft) is bigger than the plot (${Math.round(g.plotSqft)} sq ft).`);else if(ground.area>g.covMax+1)w.push(`Ground floor area (${Math.round(ground.area)} sq ft) is above the allowed coverage (${h.coverage}% = ${Math.round(g.covMax)} sq ft).`);}
- const commGross=floors.filter(f=>f.type==='commercial').reduce((a,f)=>a+f.area,0),commSell=commGross*h.commEff/100;
+ const commGross=floors.filter(f=>f.type==='commercial').reduce((a,f)=>a+f.area,0),commSell=commGross*commFrac(h);
  const sp=above>=R.structFrom?R.structShare/100*R.structPct/100:0;
  floors.forEach(f=>{const base=R[f.type],hp=f.lvl>R.heightFrom?(f.lvl-R.heightFrom)*R.heightPct/100:0;f.rate=base*(1+hp+(f.lvl>=0||f.type==='basement'?sp:0));f.cost=f.area*f.rate;});
  const gross=floors.reduce((a,f)=>a+f.area,0),grossAbove=floors.filter(f=>f.lvl>=0).reduce((a,f)=>a+f.area,0);
@@ -182,6 +185,6 @@ function quickSet(h,k,v){if(!(+h.qTotal>0))h.qTotal=quick(h).total;
  else if(k==='total')h.qTotal=v===''?0:Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=v===''?'':Math.max(0,+v|0);else{h[k]=v;return quick(h);}
  if(k==='groundUse'){if(v==='parking'){if(!(+h.podium>0))h.podium=1;}else if(v&&!(+h.commercial>0))h.commercial=1;}
  const q=quick(h);const any=+h.qTotal>0||['basements','podium','commercial'].some(x=>h[x]!==''&&h[x]!=null);h.residential=any?q.residential:'';return q;}
-const api={parseList,parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
+const api={svcGross,commFrac,parseList,parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
 if(typeof module!=='undefined')module.exports=api;else root.HR=api;
 })(this);

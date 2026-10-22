@@ -213,3 +213,6 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 @media (max-width:360px){#schT th:nth-child(1){width:29%}#schT th:nth-child(2),#schT th:nth-child(3){width:15%}#schT th:nth-child(4){width:29%}#schT th:nth-child(5){width:12%}#schT input[data-p=pct],#schT input[data-p=weeks]{width:100%!important;box-sizing:border-box}#schT button{padding:2px;min-width:0;min-height:0;font-size:.8rem}}
 @media (max-width:420px){.rpT{font-size:.72rem}.rpT td,.rpT th{padding:4px 3px}}
 #reportBody .rpT td{word-break:normal;overflow-wrap:normal}
+
+.areaT tr.tot td{border-top:1px solid #cbd5e1}#areaChk.warn{color:#b91c1c}#areaChk{color:#166534}.pdfSheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9999}.pdfBox{background:#fff;width:100%;max-width:480px;border-radius:14px 14px 0 0;padding:16px;display:flex;flex-direction:column;gap:8px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.pdfBox .sub{word-break:break-all}
+#quick select[data-qs=svcMode]{width:100%;max-width:100%;min-width:0}

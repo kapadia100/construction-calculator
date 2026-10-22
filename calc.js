@@ -134,6 +134,16 @@ function toCSV(rows){const q=v=>'"'+String(v).replace(/"/g,'""')+'"',L=[['Floor'
  rows.forEach(r=>L.push([r.floor,r.s,r.c,r.t,r.n,r.u,r.qty,r.rate,r.amt.toFixed(0)].map(q).join(',')));const T=totals(rows);
  [['GREY STRUCTURE TOTAL',T.grey],['FINISHING TOTAL',T.finish],['BOQ TOTAL',T.total]].forEach(([a,b])=>L.push(['','','','',a,'','','',b.toFixed(0)].map(q).join(',')));return L.join('\n');}
 DEFAULT_SETTINGS.hr=JSON.parse(JSON.stringify((HRm()||{}).HR_RATES||{}));
-const api={tierRate,tierCost,TIER_NAMES,RATES_DATE,STAGES,DEFAULT_SETTINGS,clone,pkr,words,unitSqft,floorAreas,floorsOf,estimate,boqDefaults,boq,totals,materials,schedule,toCSV};
+// Area summary: gross = sellable + service/common + parking/basement (non-sellable). Building cost is always on GROSS.
+function areaSummary(p,s){const e=estimate(p,s),hr=p.mode==='highrise',fl=e.floors||[],A=f=>+f.area||0,sum=a=>a.reduce((t,f)=>t+A(f),0);
+ const build=e.buildTotal||0;let r;
+ if(hr){const park=sum(fl.filter(f=>f.type==='basement'||f.type==='parking')),resG=sum(fl.filter(f=>f.type==='residential')),comG=sum(fl.filter(f=>f.type==='commercial')),flats=e.resSell||0,tc=p.sales&&p.sales.comm&&+p.sales.comm.sqft||0,comS=tc>0?tc:(e.commSell||0);
+  r={gross:e.gross||0,parking:park,basements:sum(fl.filter(f=>f.type==='basement')),parkFloors:sum(fl.filter(f=>f.type==='parking')),resGross:resG,comGross:comG,flats,flatCount:e.totalUnits||0,comSell:comS,
+   resCommon:resG-flats,comService:comG-comS,commonPct:e.g&&e.g.plateSrc==='flats'?e.g.commonPct:null,plateSrc:e.g&&e.g.plateSrc,comTyped:tc>0,svcMode:e.g&&e.g.svcMode,commSvcPct:(p.hr&&p.hr.commSvcPct!==''&&p.hr.commSvcPct!=null)?+p.hr.commSvcPct:null};
+  r.service=r.resCommon+r.comService;r.sellable=flats+comS;}
+ else{const b=sum(fl.filter(f=>f.id==='basement'||f.id==='stilt'));r={gross:e.totalArea||0,parking:b,basements:b,parkFloors:0,resGross:(e.totalArea||0)-b,comGross:0,flats:(e.totalArea||0)-b,flatCount:0,comSell:0,resCommon:0,comService:0,service:0,sellable:(e.totalArea||0)-b,house:true};}
+ r.check=r.gross-(r.sellable+r.service+r.parking);r.efficiency=r.gross?r.sellable/r.gross*100:0;r.building=build;r.construction=e.construction||0;r.grand=e.grand||0;
+ r.perGross=r.gross?build/r.gross:0;r.perSellable=r.sellable?build/r.sellable:0;r.perSellableAll=r.sellable?r.grand/r.sellable:0;r.over=r.resCommon<-0.5||r.comService<-0.5;return r;}
+const api={areaSummary,tierRate,tierCost,TIER_NAMES,RATES_DATE,STAGES,DEFAULT_SETTINGS,clone,pkr,words,unitSqft,floorAreas,floorsOf,estimate,boqDefaults,boq,totals,materials,schedule,toCSV};
 if(typeof module!=='undefined')module.exports=api;else root.Calc=api;
 })(this);
