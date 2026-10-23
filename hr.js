@@ -24,10 +24,12 @@ const UNIT_TYPES=[
 // service area: 'add' = % added on sellable (gross = sellable x (1+%)); 'gross' = % of gross (gross = sellable / (1-%))
 function svcGross(net,pct,mode){pct=Math.max(0,+pct||0);return mode==='gross'?net/(1-Math.min(pct,90)/100):net*(1+pct/100);}
 function effOf(h){const v=h.effPct;return v===''||v==null||!(+v>0)?0.8:Math.min(100,+v)/100;}
-function commFrac(h){const v=h.commSvcPct;if(v===''||v==null)return +h.commEff>0?(+h.commEff)/100:effOf(h);const p=Math.max(0,+v||0);return h.svcMode==='gross'?1-Math.min(p,90)/100:1/(1+p/100);}
+function svcOf(h){const v=+h.resSvcPct;return v>0?Math.min(v,90)/100:0;}
+const resSellOf=g=>g.plateSrc==='flats'?g.net:g.resPlate*(1-g.svc);
+function commFrac(h){const v=h.commSvcPct;if(v===''||v==null)return +h.commEff>0?(+h.commEff)/100:0.8;const p=Math.max(0,+v||0);return h.svcMode==='gross'?1-Math.min(p,90)/100:1/(1+p/100);}
 const DEFAULT_HR={plotArea:1000,plotUnit:'sqyd',plotW:0,plotD:0,plotPrice:150000000,plotPriceMode:'total',
  far:8,coverage:65,setFront:20,setRear:10,setSide:10,farExclParking:true,
- basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commonPct:15,svcMode:'add',commSvcPct:'',commEff:'',effPct:80,useSetbacks:false,targetSell:'',
+ basements:3,basementCov:95,podium:1,commercial:2,residential:12,plate:0,corePct:22,commonPct:15,svcMode:'add',commSvcPct:'',commEff:'',effPct:80,resSvcPct:0,useSetbacks:false,targetSell:'',
  units:UNIT_TYPES,commPark:1000,carArea:320,parkEff:85,lifts:0,
  sellRes:0,sellComm:0,groundAuto:true,groundArea:0,commAuto:true,commAreas:[],groundUse:'parking',qTotal:0};
 // fresh projects start blank: only rates / by-law coefficients keep defaults
@@ -41,7 +43,8 @@ function geom(h){const plotSqft=(+h.plotArea||0)*(SQ[h.plotUnit]||1);let W=+h.pl
  const ut=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0&&+t.size>0),net=ut.reduce((a,t)=>a+(+t.size)*(+t.perFloor),0),cp=h.commonPct===''||h.commonPct==null?15:Math.max(0,+h.commonPct||0);
  // plate left empty: build it from the flats (units x size + common area %); only fall back to setbacks / coverage when there are no flat sizes
  const sm=h.svcMode==='gross'?'gross':'add',src=+h.plate>0?'user':net>0?'flats':'auto',plate=src==='user'?+h.plate:src==='flats'?Math.round(svcGross(net,cp,sm)):autoPlate;
- return{plateSrc:src,useSetbacks:sb,eff:effOf(h),net,commonPct:cp,svcMode:sm,units:ut,plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
+ const resPlate=src==='auto'&&!sb?plate*effOf(h):plate;
+ return{plateSrc:src,useSetbacks:sb,eff:effOf(h),built:effOf(h),svc:svcOf(h),resPlate,net,commonPct:cp,svcMode:sm,units:ut,plotSqft,W,D,bw,bd,footprint,covMax,plate,plateW:bw>0?Math.sqrt(plate*bw/Math.max(bd,1)):0};}
 // "60x80", "60' x 80'", "60*80" (L x W, ft) or a plain area "4800"
 function parseDim(v){let t=String(v==null?'':v).toLowerCase().replace(/[\u00a0\u2009\u202f]/g,' ').replace(/(\d),(\d{3})(?!\d)/g,'$1$2').replace(/(\d),(\d{1,2})(?!\d)/g,'$1.$2').replace(/,/g,'').replace(/[–—−]/g,'-').replace(/[‘`´]/g,"'").replace(/[“]/g,'"').replace(/[’′]/g,"'").replace(/[”″]/g,'"').replace(/sq\.?\s*(ft|feet)|sft|square feet/g,'').trim();if(!t)return null;
  if(/-\s*\d+\s*(x|×|\*|by)|^-/.test(t.replace(/'\s*-\s*\d/g,"'"))&&/^-|[x×*]\s*-/.test(t))return null;
@@ -59,13 +62,13 @@ function parseList(v){const t=String(v==null?'':v).toLowerCase().replace(/[\u00a
 function shopSizes(h,R){const n=Math.max(0,+h.shops|0),g=+h.groundArea||0;const list=parseList(h.shopList);
  if(list.length)return list;if(!n||!g)return [];const eff=commFrac(h);return Array.from({length:n},()=>Math.round(g*eff/n));}
 function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
- if(h.uSizeAuto&&(h.units||[]).length===1&&+h.units[0].perFloor>0){const pl0=geom(h).plate;h=Object.assign({},h,{units:[Object.assign({},h.units[0],{size:Math.round(pl0*effOf(h)/(+h.units[0].perFloor))})]});}const g=geom(h),w=[],plate=g.plate;
+ if(h.uSizeAuto&&(h.units||[]).length===1&&+h.units[0].perFloor>0){h=Object.assign({},h,{units:[Object.assign({},h.units[0],{size:Math.round(resSellOf(geom(h))/(+h.units[0].perFloor))})]});}const g=geom(h),w=[],plate=g.plate;
  const nB=Math.max(0,+h.basements|0),nP=Math.max(0,+h.podium|0),nC=Math.max(0,+h.commercial|0);let nR=Math.max(0,+h.residential|0),autoFl=null;
  // floors left empty + a target sellable: floors = ceil(target / sellable per floor)
- {const tg=+h.targetSell||0,sf=g.plateSrc==='flats'?g.net:plate*g.eff;if((h.residential===''||h.residential==null)&&tg>0&&sf>0){const ex=tg/sf;nR=Math.ceil(ex-1e-9);autoFl={target:tg,perFloor:sf,plate,eff:g.eff,exact:ex,floors:nR,src:g.plateSrc};}}
+ {const tg=+h.targetSell||0,sf=resSellOf(g);if((h.residential===''||h.residential==null)&&tg>0&&sf>0){const ex=tg/sf;nR=Math.ceil(ex-1e-9);autoFl={target:tg,perFloor:sf,plate:g.resPlate,eff:g.eff,exact:ex,floors:nR,src:g.plateSrc};}}
  const above=nP+nC+nR,totalFloors=above+nB,bPlate=g.plotSqft*(g.useSetbacks?h.basementCov:100)/100;
  const types=h.units||[],hasTop=types.some(t=>t.top&&+t.perFloor>0)&&nR>0,typFloors=Math.max(0,nR-(hasTop?1:0));
- const core=g.plateSrc==='flats'?plate-g.net:plate*(1-g.eff),resSellFloor=plate-core;
+ const resSellFloor=resSellOf(g),core=g.resPlate-resSellFloor;
  if(g.plateSrc==='user'&&g.net>0&&plate+1<g.net)w.push(`Floor plate ${Math.round(plate).toLocaleString('en-US')} sq ft is smaller than the flats on it (${Math.round(g.net).toLocaleString('en-US')} sq ft). Leave the plate empty to work it out from the flats, or check the sizes.`);
  const typArea=types.filter(t=>!t.top).reduce((a,t)=>a+t.size*t.perFloor,0),topArea=types.filter(t=>t.top).reduce((a,t)=>a+t.size*t.perFloor,0);
  if(typArea>resSellFloor+1&&typFloors>0)w.push(`Typical floor unit mix (${Math.round(typArea)} sq ft) is bigger than the sellable area per floor (${Math.round(resSellFloor)} sq ft).`);
@@ -80,7 +83,7 @@ function calc(h,R){R=Object.assign(clone(HR_RATES),R||{});
  if(gNon)CL[0].label=GU[h.groundUse];else if(PL[0])PL[0].label='Ground parking';
  if(!gNon&&PL.length)PL.slice(1).forEach((f,i)=>f.label='Podium parking '+(i+1));
  let lvl=0;order.forEach(f=>{f.lvl=lvl++;floors.push(f);});
- for(let i=0;i<nR;i++)floors.push({key:'R'+i,type:'residential',label:(hasTop&&i===nR-1)?'Penthouse floor':'Residential '+(i+1),area:plate,lvl:lvl++});
+ for(let i=0;i<nR;i++)floors.push({key:'R'+i,type:'residential',label:(hasTop&&i===nR-1)?'Penthouse floor':'Residential '+(i+1),area:g.resPlate,lvl:lvl++});
  // user-chosen built areas: ground floor (level 0) and each commercial floor
  floors.forEach(f=>{if(f.type==='commercial'&&h.commAuto===false){const v=+(h.commAreas||[])[+f.key.slice(1)];if(v>0)f.area=v;}if(f.lvl===0&&h.groundAuto===false&&+h.groundArea>0)f.area=+h.groundArea;});
  const ground=floors.find(f=>f.lvl===0);if(ground&&h.groundAuto===false&&(g.useSetbacks||ground.area>g.plotSqft+1)){if(ground.area>g.plotSqft+1)w.push(`Ground floor area (${Math.round(ground.area)} sq ft) is bigger than the plot (${Math.round(g.plotSqft)} sq ft).`);else if(ground.area>g.covMax+1)w.push(`Ground floor area (${Math.round(ground.area)} sq ft) is above the allowed coverage (${h.coverage}% = ${Math.round(g.covMax)} sq ft).`);}
@@ -188,6 +191,6 @@ function quickSet(h,k,v){if(!(+h.qTotal>0))h.qTotal=quick(h).total;
  else if(k==='total')h.qTotal=v===''?0:Math.max(0,+v|0);else if(['basements','podium','commercial'].includes(k))h[k]=v===''?'':Math.max(0,+v|0);else{h[k]=v;return quick(h);}
  if(k==='groundUse'){if(v==='parking'){if(!(+h.podium>0))h.podium=1;}else if(v&&!(+h.commercial>0))h.commercial=1;}
  const q=quick(h);const any=+h.qTotal>0||['basements','podium','commercial'].some(x=>h[x]!==''&&h[x]!=null);h.residential=any?q.residential:'';return q;}
-const api={effOf,svcGross,commFrac,parseList,parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
+const api={effOf,svcOf,resSellOf,svcGross,commFrac,parseList,parseDim,dimA,shopSizes,EMPTY_HR,BLANK_KEYS,GUSES,quick,quickSet,HR_RATES,UNIT_TYPES,DEFAULT_HR,HR_ITEMS,geom,calc,boqDefaults,sectionSVG,floorPlanSVG,unitSVG,rooms};
 if(typeof module!=='undefined')module.exports=api;else root.HR=api;
 })(this);

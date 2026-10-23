@@ -216,3 +216,4 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 
 .areaT tr.tot td{border-top:1px solid #cbd5e1}#areaChk.warn{color:#b91c1c}#areaChk{color:#166534}.pdfSheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9999}.pdfBox{background:#fff;width:100%;max-width:480px;border-radius:14px 14px 0 0;padding:16px;display:flex;flex-direction:column;gap:8px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.pdfBox .sub{word-break:break-all}
 #quick select[data-qs=svcMode]{width:100%;max-width:100%;min-width:0}
+.qadv{margin-top:6px}.qadv>summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--accent,#1e3a5f)}.qmore{list-style:none;margin-left:-1.4em}
