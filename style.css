@@ -217,3 +217,17 @@ body.isEmpty #totBar>span{display:none}body.isEmpty #tbWords{font-size:.9rem;col
 .areaT tr.tot td{border-top:1px solid #cbd5e1}#areaChk.warn{color:#b91c1c}#areaChk{color:#166534}.pdfSheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center;z-index:9999}.pdfBox{background:#fff;width:100%;max-width:480px;border-radius:14px 14px 0 0;padding:16px;display:flex;flex-direction:column;gap:8px;padding-bottom:calc(16px + env(safe-area-inset-bottom))}.pdfBox .sub{word-break:break-all}
 #quick select[data-qs=svcMode]{width:100%;max-width:100%;min-width:0}
 .qadv{margin-top:6px}.qadv>summary{cursor:pointer;font-weight:600;padding:8px 0;color:var(--accent,#1e3a5f)}.qmore{list-style:none;margin-left:-1.4em}
+
+/* access gate */
+html:not([data-ok]) body{overflow:hidden}
+html:not([data-ok]) header,html:not([data-ok]) #totBar,html:not([data-ok]) nav,html:not([data-ok]) .note,html:not([data-ok]) main,html:not([data-ok]) footer,html:not([data-ok]) .modal,html:not([data-ok]) .printHead{visibility:hidden!important;pointer-events:none!important}
+#gate{position:fixed;inset:0;z-index:100000;display:none;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,#0f1a2e 0%,#1e3a5f 55%,#243b55 100%)}
+html:not([data-ok]) #gate{display:flex!important}
+.gateBox{width:100%;max-width:360px;background:var(--surface,#fff);color:var(--ink,#1e293b);border-radius:18px;padding:22px 20px 18px;box-shadow:0 18px 50px #0006;border:1px solid #f59e0b55}
+.gateBrand{display:flex;gap:12px;align-items:center;margin-bottom:16px}.gateBrand b{display:block;font-size:1.1rem;color:#1e3a5f}.gateBrand small{color:#64748b}
+#gateForm label{display:flex;flex-direction:column;gap:6px;font-weight:700;color:#1e3a5f;margin-bottom:12px}
+#gateCode{font-size:1.15rem;letter-spacing:.12em;min-height:48px;border-radius:12px;border:2px solid #cbd5e1;padding:10px 12px}
+#gateCode:focus{outline:none;border-color:#f59e0b;box-shadow:0 0 0 3px #f59e0b44}
+#gateGo{width:100%;min-height:48px;font-size:1.05rem;font-weight:800;border-radius:12px}
+.gateErr{min-height:1.2em;margin:10px 0 0;color:#b91c1c;font-weight:700;font-size:.92rem}
+#lockBtn{min-height:44px}
