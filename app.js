@@ -227,29 +227,56 @@ let qKey='';const adv=$('#adv');try{if(localStorage.getItem('cc-adv')==='1')adv.
 adv.addEventListener('toggle',()=>{try{localStorage.setItem('cc-adv',adv.open?'1':'0');}catch(e){}if(adv.open&&P().mode==='highrise')renderHRIn();});
 const qi=(l,a,v,x)=>`<label>${l}<input type="text" ${x&&x.text?'inputmode="text"':'inputmode="decimal"'} autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" ${a} value="${esc(v)}"${x&&x.money?' class="money"':''}${x&&x.ph?` placeholder="${esc(x.ph)}"`:''}></label>`;
 const qs=(l,a,opts,v)=>`<label>${l}<select ${a}>${opts.map(([k,t])=>`<option value="${k}" ${k===v?'selected':''}>${t}</option>`).join('')}</select></label>`;
-function buildQuick(){const p=P(),hr=p.mode==='highrise';let x=`<div class="qhead"><h2>⚡ Quick entry</h2><span class="qbtns"><button type="button" id="clearP" class="mini">🧹 Clear inputs</button><button type="button" id="qUp" class="mini">📎 Upload layout</button></span></div><p class="sub">Type the main numbers here. Results update instantly below. Everything else is under <b>Advanced settings</b>.</p><div class="qgrid">`;
- x+=qi('Plot number / name','data-q="plotNo"',p.plotNo||'',{text:1,ph:'e.g. SB-12, Block 7'});
+function buildQuick(){const p=P(),hr=p.mode==='highrise';let x=`<div class="qhead"><h2>⚡ Your project</h2><span class="qbtns"><button type="button" id="clearP" class="mini">🧹 Clear</button></span></div><p class="sub">Only a few numbers — everything else is calculated for you below.</p><div class="qgrid">`;
  if(hr){ensureHR(p);const h=p.hr,U=[['sqyd','sq yd'],['sqft','sq ft']];
   x+=`<div class="qpair">`+qi('Plot size','data-qh="plotArea"',h.plotArea,{ph:'e.g. 1000'})+qs('Unit','data-qh="plotUnit"',U,h.plotUnit)+`</div>`;
-  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qh="plotPrice"',h.plotPrice,{money:1,ph:'e.g. 15 crore'})+qs('Price is','data-qh="plotPriceMode"',[['total','Total'],['perunit','Per '+(h.plotUnit==='sqft'?'sq ft':'sq yd')]],h.plotPriceMode)+`</div>`;
-  x+=`</div>`+stackHTML(h);}
+  x+=qi('Commercial built (sq ft)','data-qs="cSq"','',{ph:'blank = none'});
+  x+=`<div class="qpair">`+numF('Upper floors (blank = auto)','rN','e.g. 10')+numF('OR total sellable sq ft','tSell','e.g. 100000')+`</div>`;
+  x+=`<div class="qfull"><span class="qlab">Basements</span><div class="chips small" id="bsChips" role="group" aria-label="Basements"><button type="button" data-bs="0">None</button><button type="button" data-bs="1">1</button><button type="button" data-bs="2">2</button></div></div>`;
+  x+=`<div class="qfull"><span class="qlab">Built-up % of plot (upper floors)</span><div class="chips small" id="effChips" role="group" aria-label="Built-up percent"><button type="button" data-eff="70">70</button><button type="button" data-eff="75">75</button><button type="button" data-eff="80">80</button><button type="button" data-eff="85">85</button><button type="button" data-eff="90">90</button><button type="button" data-eff="100">100</button><button type="button" data-eff="c">Custom</button></div><label data-effc hidden class="effC">Custom %<input type="text" inputmode="decimal" autocomplete="off" data-qs="effC" placeholder="e.g. 82"></label><p class="sub plateNote" data-platenote></p></div>`;
+  x+=qi('Residential sale (Rs / sq ft)','data-qs="sellRes"','',{money:1,ph:'e.g. 42000'});
+  x+=`<span data-commrate>`+qi('Commercial sale (Rs / sq ft)','data-qs="sellComm"','',{money:1,ph:'e.g. 80000'})+`</span>`;
+  x+=`<div class="qfull"><span class="qlab">Quality</span><div class="chips small" id="qTier" role="group" aria-label="Quality">${[['E','Economy'],['M','Medium'],['P','Premium']].map(([k,l])=>`<button type="button" data-tier="${k}">${l}</button>`).join('')}</div></div>`;
+  x+=`</div>`+moreHTML(h);}
  else{const U=[['sqyd','sq yd'],['sqft','sq ft']];if(p.plotUnit==='marla')U.push(['marla','marla']);
   x+=`<div class="qpair">`+qi('Plot size','data-qa="plotArea"',p.plotArea,{ph:'e.g. 200'})+qs('Unit','data-qa="plotUnit"',U,p.plotUnit)+`</div>`;
-  x+=`<div class="qpair">`+qi('Plot price (Rs)','data-qa="plotPrice"',p.plotPrice,{money:1,ph:'e.g. 1.5 crore'})+qs('Price is','data-qa="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],p.plotPriceMode)+`</div>`;
-  x+=qi('Number of floors','data-qa="floors"',p.floors,{ph:'e.g. 2'})+qi('Covered area per floor (sq ft)','data-qa="bua"',p.bua,{ph:'e.g. 1500'})+qs('Quality','data-qa="quality"',[['A','A (premium)'],['B','B (standard)'],['C','C (economy)']],p.quality)+`</div>`;}
- x+=`<div id="qSum" class="qsum" aria-live="polite"></div>`;$('#quick').innerHTML=x;qKey=qk(p);moneyHints();if(navigator.webdriver&&!/[?&]min\b/.test(location.search)){const d=$('#qMore');if(d)d.open=true;}}
+  x+=`<div class="qfull"><span class="qlab">Basement / stilt</span><div class="chips small" id="hsExtra" role="group">${[['none','None'],['basement','Basement'],['stilt','Stilt']].map(([k,l])=>`<button type="button" data-hex="${k}">${l}</button>`).join('')}</div></div>`;
+  x+=`<div class="qpair">`+qi('Ground + upper floors','data-qa="floors"',p.floors,{ph:'e.g. 2'})+qi('Covered area / floor (sq ft)','data-qa="bua"',p.bua,{ph:'e.g. 1500'})+`</div>`;
+  x+=`<div class="qfull"><span class="qlab">Quality</span><div class="chips small" id="qTier" role="group">${[['E','Economy'],['M','Medium'],['P','Premium']].map(([k,l])=>`<button type="button" data-tier="${k}">${l}</button>`).join('')}</div></div>`;
+  x+=`</div><details class="qadv" id="qMore"><summary>More options (optional)</summary><div class="qgrid">`+qi('Plot number / name','data-q="plotNo"',p.plotNo||'',{text:1,ph:'e.g. SB-12'})+qi('Plot price (Rs)','data-qa="plotPrice"',p.plotPrice,{money:1,ph:'e.g. 1.5 crore'})+qs('Price is','data-qa="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],p.plotPriceMode)+`<p class="sub"><button type="button" id="qUp" class="mini">📎 Upload layout</button></p></div></details>`;}
+ x+=`<div id="qSum" class="qsum" aria-live="polite"></div>`;$('#quick').innerHTML=x;qKey=qk(p);moneyHints();document.body.classList.add('simpleEst');
+ if(navigator.webdriver&&!/[?&]min\b/.test(location.search)){const d=$('#qMore');if(d)d.open=true;}}
+function moreHTML(h){h=h||{};return `<details class="qadv" id="qMore"><summary>More options (optional)</summary><div class="qgrid">`+
+ qi('Plot number / name','data-q="plotNo"',P().plotNo||'',{text:1,ph:'e.g. SB-12, Block 7'})+
+ qi('Plot price (Rs)','data-qh="plotPrice"',h.plotPrice||'',{money:1,ph:'e.g. 15 crore'})+
+ qs('Price is','data-qh="plotPriceMode"',[['total','Total'],['perunit','Per unit area']],h.plotPriceMode||'total')+
+ numF('Basements (0–8)','bN','0, 1, 2…')+`<div class="qbs" id="qBs"></div>`+
+ dimF('Commercial – L x W ft or sq ft','gDim','or use Commercial sq ft above')+
+ numF('Number of shops (optional)','shops','e.g. 6')+qi('Shop sizes sq ft','data-qs="shopList"','',{text:1,ph:'auto, or 300, 450'})+
+ numF('Commercial service area %','cSvc','blank = 80% sellable')+numF('Parking floors above ground','pN','0, 1, 2…')+
+ dimF('Parking floor – L x W ft or sq ft','pDim','same as residential')+dimF('Upper floor built-up – L x W ft or sq ft','rDim')+
+ numF('Flats per floor','upf','e.g. 4')+numF('Sellable flat size (sq ft)','usize','auto')+
+ numF('Service % on upper floors','rSvc','0 = all built-up sellable')+numF('Flat service area %','common','15')+
+ `<label>Flat service % is…<select data-qs="svcMode"><option value="add">added on sellable</option><option value="gross">part of gross</option></select></label>`+
+ `<p class="sub"><button type="button" id="qUp" class="mini">📎 Upload layout</button> · open <b>Advanced settings</b> below for every rate</p></div></details>`;}
 const qk=p=>p.id+p.mode;
 function syncQuick(){const p=P();if(qKey!==qk(p))buildQuick();if(p.mode==='highrise'&&p.hr){const bx=$('#qBs'),n=Math.min(8,+p.hr.basements|0);if(bx&&bx.querySelectorAll('input').length!==n)bx.innerHTML=bFields(n);}const a=document.activeElement,set=(el,v)=>{if(el&&el!==a&&el.value!==String(v))el.value=v;};
  const e=C.estimate(p,S());set($('#quick [data-q=plotNo]'),p.plotNo||'');let s='';
- if(p.mode==='highrise'){const h=p.hr;['plotArea','plotUnit','plotPrice','plotPriceMode'].forEach(k=>set($(`#quick [data-qh=${k}]`),h[k]));
-  Object.entries(stackVals(h)).forEach(([k,v])=>set($(`#quick [data-qs="${k}"]`),v));
-  {const ec=$('#quick [data-effc]'),es=$('#quick [data-qs=eff]');if(ec&&es)ec.hidden=es.value!=='c';}
-  const auto=Math.round(e.g.plate);document.querySelectorAll('#quick .dimA').forEach(el=>{const d=H.parseDim(el.value);const o=el.parentElement.querySelector('.dimOut');if(o)o.textContent=d?(d.L?`= ${n0(d.area)} sq ft`:`${n0(d.area)} sq ft`):(el.value.trim()?'⚠️ type 60x80 or 4800':'');});
+ if(p.mode==='highrise'){const h=p.hr;['plotArea','plotUnit','plotPrice','plotPriceMode'].forEach(k=>set($(`#quick [data-qh=${k}]`),h[k]==null?'':h[k]));
+  Object.entries(stackVals(h)).forEach(([k,v])=>set($(`#quick [data-qs="${k}"]`),v==null?'':v));
+  {const ec=$('#quick [data-effc]'),es=stackVals(h).eff;if(ec)ec.hidden=es!=='c';
+   document.querySelectorAll('#effChips [data-eff]').forEach(b=>b.classList.toggle('on',b.dataset.eff===(es||'80')));
+   document.querySelectorAll('#bsChips [data-bs]').forEach(b=>b.classList.toggle('on',String(+h.basements|0)===b.dataset.bs));}
+  {const cSq=+h.groundArea>0&&h.groundAuto===false?+h.groundArea:0;const cr=$('#quick [data-commrate]');if(cr)cr.hidden=!(cSq>0||+h.commercial>0);}
+  document.querySelectorAll('#qTier [data-tier]').forEach(b=>b.classList.toggle('on',b.dataset.tier===(p.tier||'M')));
+  const auto=Math.round(e.g&&e.g.plate||0);document.querySelectorAll('#quick .dimA').forEach(el=>{const d=H.parseDim(el.value);const o=el.parentElement.querySelector('.dimOut');if(o)o.textContent=d?(d.L?`= ${n0(d.area)} sq ft`:`${n0(d.area)} sq ft`):(el.value.trim()?'⚠️ type 60x80 or 4800':'');});
   const rp=$('#quick [data-qs=rDim]');if(rp)rp.placeholder='60x80 or 4800 (auto ≈ '+n0(auto)+')';
-  const us=$('#quick [data-qs=usize]');if(us){const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);us.placeholder=h.uSizeAuto&&e.unitRows[0]?'auto ≈ '+n0(e.unitRows[0].size)+' sq ft':u.length>1?'mixed (see Advanced)':'auto = plate − core ÷ units';}
-  s=stackSummary(p,e);}
- else{F.forEach(k=>set($(`#quick [data-qa=${k}]`),p[k]));
-  s=`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div><div class="pills"><div class="pill">Covered area<b>${n0(e.totalArea)} sq ft</b></div><div class="pill">Building<b>${C.words(e.buildTotal)}</b><small>${fmt(e.perSqft)} / sq ft</small></div><div class="pill">Plot<b>${C.words(e.plot)}</b></div></div>`;}
+  const pn=$('#quick [data-platenote]');if(pn)pn.innerHTML=e.g&&e.g.plate?effTxt(e):'';
+  s=detailSummary(p,e);}
+ else{F.forEach(k=>set($(`#quick [data-qa=${k}]`),p[k]==null?'':p[k]));
+  document.querySelectorAll('#hsExtra [data-hex]').forEach(b=>b.classList.toggle('on',b.dataset.hex===(p.extra||'none')));
+  document.querySelectorAll('#qTier [data-tier]').forEach(b=>b.classList.toggle('on',b.dataset.tier===(p.tier||'M')));
+  s=houseDetail(p,e);}
  $('#qSum').innerHTML=s+'<div class="rpBtns"><b>📑 Feasibility report</b><button data-rp="print" class="mini">🖨️ Print</button><button data-rp="pdf" class="mini accent">📄 Save as PDF</button><button data-rp="open" class="mini">View</button></div>';}
 $('#quick').addEventListener('input',ev=>{const t=ev.target,p=P(),d=t.dataset,v=t.tagName==='SELECT'?t.value:t.value;
  if(d.q==='plotNo'){p.plotNo=t.value;save();renderProjSel();syncQuick();return;}
@@ -258,25 +285,30 @@ $('#quick').addEventListener('input',ev=>{const t=ev.target,p=P(),d=t.dataset,v=
  if(d.qh){if(!$(`#hrIn [data-h=${d.qh}]`))renderHRIn();fwd(`#hrIn [data-h=${d.qh}]`);if(d.qh==='plotUnit')buildQuick();syncQuick();return;}
  const h=p.hr;if(d.qs!=null)stackSet(h,d.qs,v);else return;
  save();if(adv.open)renderHRIn();renderHROut();try{applyEmpty();}catch(_){}});
-$('#quick').addEventListener('click',e=>{if(e.target.closest('#qUp')){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}});
+$('#quick').addEventListener('click',e=>{
+ if(e.target.closest('#qUp')){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();return;}
+ const bs=e.target.closest('#bsChips [data-bs]');if(bs){const h=P().hr;stackSet(h,'bN',bs.dataset.bs);save();if(adv.open)renderHRIn();renderHROut();return;}
+ const ef=e.target.closest('#effChips [data-eff]');if(ef){const h=P().hr;stackSet(h,'eff',ef.dataset.eff);save();if(adv.open)renderHRIn();renderHROut();return;}
+ const tr=e.target.closest('#qTier [data-tier]');if(tr){P().tier=tr.dataset.tier;save();renderAll();return;}
+ const hx=e.target.closest('#hsExtra [data-hex]');if(hx){P().extra=hx.dataset.hex;const el=$('#extra');if(el){el.value=hx.dataset.hex;el.dispatchEvent(new Event('change',{bubbles:true}));}save();renderEstimate();return;}
+});
 $('#quick').addEventListener('change',e=>{if(e.target.dataset.qs!=null)syncQuick();});
 const pos=v=>num(v)>0;
 // ---------- Building stack builder (bottom to top) ----------
 const dimF=(l,k,ph)=>`<label>${l}<input type="text" inputmode="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="next" class="dimA" data-qs="${k}" placeholder="${ph||'60x80 or 4800'}"><small class="dimOut"></small></label>`;
 const numF=(l,k,ph)=>qi(l,`data-qs="${k}"`,'',{ph});
 const bFields=n=>Array.from({length:Math.min(n,8)},(_,i)=>dimF(`Basement ${i+1} – L x W ft or sq ft`,'b'+i,i?'same as B1':'60x80 or 4800')).join('');
-function stackHTML(h){const nB=+h.basements|0;let x=`<ol class="stack">`;
- x+=`<li><h3>1 · Basements</h3><div class="qgrid">${numF('How many basements? (0 = none)','bN','0, 1, 2…')}<div class="qbs" id="qBs">${bFields(nB)}</div></div></li>`;
- x+=`<li><h3>2 · Ground floor – shops / commercial (full plot)</h3><div class="qgrid">${dimF('Commercial sq ft – L x W ft or sq ft (blank = full plot)','gDim')}${numF('Number of shops (optional)','shops','e.g. 6')}</div></li>`;
- x+=`<li><h3>3 · Upper floors</h3><div class="qgrid">${numF('Number of upper floors (blank = auto from sellable)','rN','e.g. 12')}${numF('Total sellable sq ft (optional)','tSell','sets the floors')}<label>Built-up % of plot<select data-qs="eff">${[70,75,80,85,90,100].map(v=>`<option value="${v}">${v}%</option>`).join('')}<option value="c">Custom…</option></select></label><label data-effc hidden>Custom built-up %<input type="text" inputmode="decimal" autocomplete="off" data-qs="effC" placeholder="e.g. 82"></label></div><div class="sub plateNote" data-platenote></div></li>`;
- x+=`<li class="qmore"><details class="qadv" id="qMore"><summary>More options (optional)</summary><div class="qgrid">${qi('Shop sizes sq ft','data-qs="shopList"','',{text:1,ph:'auto split, or 300, 450, 500'})}${numF('Commercial service area %','cSvc','blank = 80% sellable')}${numF('Parking floors above ground','pN','0, 1, 2…')}${dimF('Parking floor – L x W ft or sq ft','pDim','same as residential')}${dimF('Upper floor built-up – L x W ft or sq ft','rDim')}${numF('Flats per floor','upf','e.g. 4')}${numF('Sellable flat size (sq ft)','usize','auto')}${numF('Service area % deducted on upper floors','rSvc','0 = all built-up is sellable')}${numF('Flat service area %','common','15')}<label>Flat service % is…<select data-qs="svcMode"><option value="add">added on sellable</option><option value="gross">part of gross</option></select></label></div></details></li></ol>`;return x;}
+function stackHTML(h){return moreHTML(h);}
 function stackVals(h){const sh=(dim,area,ok)=>{const a=+area>0&&ok!==false?+area:0;if(dim&&String(dim).trim()&&!H.dimA(dim))return dim;return dim&&H.dimA(dim)===a&&a?dim:(a?a:'');};const o={bN:h.basements===''||h.basements==null?'':+h.basements|0};
  for(let i=0;i<(+h.basements|0);i++)o['b'+i]=sh((h.bDims||[])[i],(h.bAreas||[])[i]);
+ o.cSq=+h.groundArea>0&&h.groundAuto===false?+h.groundArea:'';
  o.gDim=sh(h.gDim,h.groundArea,h.groundAuto===false);o.shops=h.shops||'';o.shopList=h.shopList||'';o.pN=h.podium===''||h.podium==null?'':+h.podium|0;o.pDim=sh(h.pDim,h.parkArea);o.rN=h.residential===''||h.residential==null?'':+h.residential|0;o.rDim=sh(h.rDim,h.plate);o.tSell=+h.targetSell>0?+h.targetSell:'';
+ o.sellRes=+h.sellRes>0?+h.sellRes:'';o.sellComm=+h.sellComm>0?+h.sellComm:'';
  const u=(h.units||[]).filter(t=>!t.top&&+t.perFloor>0);o.upf=u.length?u.reduce((a,t)=>a+(+t.perFloor),0):'';o.usize=!h.uSizeAuto&&u.length===1&&+u[0].size>0?u[0].size:'';o.common=h.commonPct===15||h.commonPct==null?'':h.commonPct;o.svcMode=h.svcMode==='gross'?'gross':'add';{const pv=h.effPct==null||h.effPct===''?80:+h.effPct;o.eff=!h.effCustom&&[70,75,80,85,90,100].includes(pv)?String(pv):'c';o.effC=o.eff==='c'?pv:'';o.rSvc=+h.resSvcPct>0?+h.resSvcPct:'';}o.cSvc=h.commSvcPct==null?'':h.commSvcPct;return o;}
 function stackSet(h,k,v){const n=numB(v);h.qTotal=0;
  if(k==='bN'){h.basements=n===''?'':Math.min(8,Math.max(0,n|0));}
  else if(/^b\d+$/.test(k)){const i=+k.slice(1);(h.bDims=h.bDims||[])[i]=v;(h.bAreas=h.bAreas||[])[i]=H.dimA(v)||'';}
+ else if(k==='cSq'){const a=n===''?0:Math.max(0,n);h.groundArea=a;h.gDim=a?String(a):'';h.groundAuto=!a;if(a>0){h.groundUse='commercial';if(!(+h.commercial>0))h.commercial=1;}else{if(h.groundUse==='commercial')h.groundUse='parking';if(+h.commercial===1&&!(+h.shops>0))h.commercial=0;}}
  else if(k==='gDim'){h.gDim=v;const a=H.dimA(v);h.groundAuto=!(a>0);h.groundArea=a||0;if(a>0){h.groundUse='commercial';if(!(+h.commercial>0))h.commercial=1;}}
  else if(k==='shops'){h.shops=n;if(n>0){h.groundUse='commercial';if(!(+h.commercial>0))h.commercial=1;}}
  else if(k==='shopList')h.shopList=v;
@@ -288,9 +320,11 @@ function stackSet(h,k,v){const n=numB(v);h.qTotal=0;
  else if(k==='rSvc')h.resSvcPct=n===''?0:Math.min(90,Math.max(0,n));
  else if(k==='svcMode')h.svcMode=v==='gross'?'gross':'add';
  else if(k==='cSvc')h.commSvcPct=n===''?'':Math.max(0,n);
- else if(k==='tSell')h.targetSell=n===''?'':Math.max(0,n);
- else if(k==='rN')h.residential=n===''?'':Math.max(0,n|0);
+ else if(k==='tSell'){h.targetSell=n===''?'':Math.max(0,n);if(n!=='')h.residential='';}
+ else if(k==='rN'){h.residential=n===''?'':Math.max(0,n|0);if(n!=='')h.targetSell='';}
  else if(k==='rDim'){h.rDim=v;h.plate=H.dimA(v)||0;}
+ else if(k==='sellRes')h.sellRes=n===''?'':Math.max(0,n);
+ else if(k==='sellComm')h.sellComm=n===''?'':Math.max(0,n);
  else if(k==='upf'||k==='usize'){const cur=stackVals(h),upf=k==='upf'?n:cur.upf,us=k==='usize'?n:cur.usize;h.units=[{id:'apt',name:'Flat',beds:2,size:us===''?'':us,perFloor:upf===''?'':upf,park:1}];h.uSizeAuto=us==='';}
  if(h.groundUse==='commercial'&&!(+h.podium>0)&&h.podium!=='')h.podium=+h.podium|0;}
 function svcTxt(g){const gm=g.svcMode==='gross',pg=s=>H.svcGross(s,g.commonPct,g.svcMode),tag=gm?`÷ (1 − ${g.commonPct}%) service`:`+ ${g.commonPct}% service`;
@@ -304,15 +338,45 @@ window.__effTxt=()=>{const e=C.estimate(P(),S());return e.g&&e.g.plateSrc!=='fla
 function flTxt(e){const f=e&&e.autoFl;if(!f)return '';return `${n0(f.target)} sellable ÷ ${n0(f.perFloor)} sellable per floor = ${f.exact.toFixed(2)} → ${f.floors} floors · auto`;}
 window.__flTxt=()=>flTxt(C.estimate(P(),S()));
 function plateTxt(e){const g=e.g||{};if(e.autoFl)return `<br><small class="plateBk">${g.plateSrc==='flats'?svcTxt(g):effTxt(e)}</small><br><small class="plateBk flAuto">${flTxt(e)}</small>`;if(g.plateSrc==='flats')return `<br><small class="plateBk">${svcTxt(g)}</small>`;return `<br><small class="plateBk">${effTxt(e)}</small>`;}
-function stackSummary(p,e){const h=p.hr,L=[];let last=null;
- e.floors.slice().sort((a,b)=>a.lvl-b.lvl).forEach(f=>{const t=f.type==='commercial'&&f.lvl===0?'shops':f.type,k=t+'|'+Math.round(f.area);if(last&&last.k===k){last.n++;last.to=f.label;}else{last={k,t,n:1,from:f.label,to:f.label,area:f.area};L.push(last);}});
- const ico={basement:'🅿️',parking:'🚗',shops:'🛍️',commercial:'🏬',residential:'🏠'};
- const shops=H.shopSizes(h);const ur=e.unitRows.filter(u=>u.count>0);
- return `<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot · building ${C.words(e.buildTotal)}${e.gross?' · '+fmt(e.buildTotal/e.gross)+' / sq ft':''}</small></div>
- <div class="rlist stackSum">`+L.slice().reverse().map(g=>`<div class="rrow"><b>${ico[g.t]||''} ${esc(g.n>1?g.from+' – '+g.to:g.from)}</b><span>${g.n>1?g.n+(g.t==='residential'&&e.autoFl?' (auto)':'')+' × ':''}${n0(g.area)} sq ft${g.t==='residential'?plateTxt(e):''}</span><em>${n0(g.area*g.n)} sq ft</em></div>`).join('')+
+function workPara(p,e){const h=p.hr||{},g=e.g||{};if(!(+h.plotArea>0))return '';
+ const bits=[];bits.push(effTxt(e));if(e.autoFl)bits.push(flTxt(e));
+ if(e.nR>0)bits.push(`${e.nR} upper floor${e.nR>1?'s':''} × ${n0(g.resPlate||g.plate)} sq ft = ${n0((g.resPlate||g.plate)*e.nR)} sq ft residential built-up`);
+ if(e.commGross>0)bits.push(`Commercial ${n0(e.commGross)} sq ft built (${n0(e.commSell)} sellable)`);
+ if(e.nB>0)bits.push(`${e.nB} basement${e.nB>1?'s':''} on full plot`);
+ return `<p class="work">${bits.filter(Boolean).join(' · ')}</p>`;}
+function detailSummary(p,e){const R=window.SALES?SALES.calc():{revenue:0,profit:0,pct:0,any:false,flats:[],comm:null},h=p.hr||{},g=e.g||{};
+ const resRev=(R.flats||[]).reduce((a,f)=>a+(f.rev||0),0),comRev=R.comm&&R.comm.rev||0;
+ const sellRes=e.resSell||0,sellCom=e.commSell||0;
+ const L=[];let last=null;e.floors.slice().sort((a,b)=>a.lvl-b.lvl).forEach(f=>{const t=f.type==='commercial'&&f.lvl===0?'shops':f.type,k=t+'|'+Math.round(f.area);if(last&&last.k===k){last.n++;last.to=f.label;}else{last={k,t,n:1,from:f.label,to:f.label,area:f.area};L.push(last);}});
+ const shops=H.shopSizes(h),ur=e.unitRows.filter(u=>u.count>0);
+ const stackBits=L.slice().reverse().map(g=>`<div class="rrow"><b>${esc(g.n>1?g.from+' – '+g.to:g.from)}</b><span>${g.n>1?g.n+(g.t==='residential'&&e.autoFl?' (auto)':'')+' × ':''}${n0(g.area)} sq ft${g.t==='residential'?plateTxt(e):''}</span><em>${n0(g.area*g.n)} sq ft</em></div>`).join('')+
  (shops.length?`<div class="rrow"><b>🛍️ Shops</b><span>${shops.length} shops: ${shops.map(n0).join(', ')} sq ft</span><em>${n0(shops.reduce((a,b)=>a+b,0))} sq ft</em></div>`:'')+
- (ur.length?`<div class="rrow"><b>🏠 Flats</b><span>${ur.map(u=>`${u.perFloor}/floor × ${u.floors} floors · ${n0(u.size)} sq ft each`).join('; ')}</span><em data-qunits>${e.totalUnits} flats</em></div>`:'')+`
- <div class="rrow tot"><b>Gross built-up area</b><span>${e.totalFloors} levels</span><em data-qgross>${n0(e.gross)} sq ft</em></div><div class="rrow tot"><b>Total cost</b><span>building + plot</span><em>${fmt(e.grand)}</em></div></div>`+e.warnings.slice(0,2).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
+ (ur.length?`<div class="rrow"><b>🏠 Flats</b><span>${ur.map(u=>`${u.perFloor}/floor × ${u.floors} floors · ${n0(u.size)} sq ft each`).join('; ')}</span><em data-qunits>${e.totalUnits} flats</em></div>`:'');
+ return workPara(p,e)+`<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)}${e.plot?` · building ${C.words(e.buildTotal)} + plot ${C.words(e.plot)}`:''}</small></div>
+ <div class="rlist stackSum">${stackBits}</div>
+ <div class="detGrid">
+  <div class="detCard"><h3>📐 Area</h3><table class="saleT"><tr><td>Gross built-up</td><td class="n" data-qgross>${n0(e.gross)} sq ft</td></tr>
+  <tr><td>Residential sellable</td><td class="n">${n0(sellRes)} sq ft</td></tr>
+  ${e.commGross?`<tr><td>Commercial sellable</td><td class="n">${n0(sellCom)} sq ft</td></tr>`:''}
+  <tr class="tot"><td><b>Total sellable</b></td><td class="n"><b>${n0(e.sellable)} sq ft</b></td></tr>
+  ${g.built!=null?`<tr><td>Built-up % (upper floors)</td><td class="n">${Math.round(g.built*100)}%</td></tr>`:''}
+  ${e.nR?`<tr><td>Per upper floor (cost &amp; sales)</td><td class="n">${n0(g.resPlate||g.plate)} sq ft</td></tr>`:''}</table></div>
+  <div class="detCard"><h3>🏗️ Cost</h3><table class="saleT"><tr><td>Construction</td><td class="n">${fmt(e.buildTotal)}</td></tr>
+  <tr><td>Plot</td><td class="n">${e.plot?fmt(e.plot):'—'}</td></tr>
+  <tr class="tot"><td><b>Grand total</b></td><td class="n"><b>${fmt(e.grand)}</b></td></tr>
+  ${e.gross?`<tr><td>Cost / gross sq ft</td><td class="n">${fmt(e.buildTotal/e.gross)}</td></tr>`:''}</table></div>
+  <div class="detCard"><h3>💵 Sales</h3><table class="saleT">
+  <tr><td>Residential${+h.sellRes>0?' @ '+fmt(+h.sellRes)+'/sq ft':''}</td><td class="n">${resRev?fmt(resRev):(+h.sellRes>0?fmt(sellRes*+h.sellRes):'—')}</td></tr>
+  ${e.commGross||+h.sellComm>0?`<tr><td>Commercial${+h.sellComm>0?' @ '+fmt(+h.sellComm)+'/sq ft':''}</td><td class="n">${comRev?fmt(comRev):(+h.sellComm>0?fmt(sellCom*+h.sellComm):'—')}</td></tr>`:''}
+  <tr class="tot"><td><b>Total revenue</b></td><td class="n"><b>${R.any||resRev||comRev||(+h.sellRes>0&&sellRes)?fmt(R.revenue||sellRes*(+h.sellRes||0)+sellCom*(+h.sellComm||0)):'—'}</b></td></tr></table></div>
+  <div class="detCard"><h3>📈 Profit</h3><table class="saleT">
+  <tr class="tot"><td><b>Profit</b></td><td class="n"><b class="${(R.profit||0)<0?'neg':'pos'}">${(R.any||+h.sellRes>0||+h.sellComm>0)?fmt((R.revenue||sellRes*(+h.sellRes||0)+sellCom*(+h.sellComm||0))-e.grand):'—'}</b></td></tr>
+  <tr><td>Profit % on cost</td><td class="n">${(R.any||+h.sellRes>0)&&e.grand?((((R.revenue||sellRes*(+h.sellRes||0)+sellCom*(+h.sellComm||0))-e.grand)/e.grand)*100).toFixed(1)+'%':'—'}</td></tr></table></div>
+ </div>`+e.warnings.slice(0,2).map(w=>`<div class="warn">⚠️ ${esc(w)}</div>`).join('');}
+function houseDetail(p,e){return `<div class="qbig"><span>Grand total</span><b data-qgrand>${fmt(e.grand)}</b><small>${C.words(e.grand)} incl. plot</small></div>
+ <div class="detGrid"><div class="detCard"><h3>📐 Area</h3><table class="saleT"><tr><td>Covered area</td><td class="n">${n0(e.totalArea)} sq ft</td></tr><tr><td>Floors</td><td class="n">${p.floors||'—'}</td></tr></table></div>
+ <div class="detCard"><h3>🏗️ Cost</h3><table class="saleT"><tr><td>Building</td><td class="n">${fmt(e.buildTotal)}</td></tr><tr><td>Plot</td><td class="n">${e.plot?fmt(e.plot):'—'}</td></tr><tr class="tot"><td><b>Grand total</b></td><td class="n"><b>${fmt(e.grand)}</b></td></tr><tr><td>Per covered sq ft</td><td class="n">${fmt(e.perSqft)}</td></tr></table></div></div>`;}
+function stackSummary(p,e){return detailSummary(p,e);}
 window.__stack={stackSet,stackVals};
 // ---------- start screen (first open + New) ----------
 function startShow(){$('#start').hidden=false;$('#stBody').innerHTML=`<p class="sub">Step 1 of 2 · What are you planning?</p><div class="stChoices"><button data-st="highrise" class="stBig">🏢 Building<small>Apartments, shops, parking</small></button><button data-st="house" class="stBig">🏠 House<small>Single house / ghar</small></button></div>`;}
@@ -322,7 +386,7 @@ $('#start').addEventListener('click',e=>{const b=e.target.closest('button');if(!
  if(b.dataset.st){let p=P();if(!isEmpty(p)){p=newProject('Project '+(st.projects.length+1));st.projects.push(p);st.cur=p.id;}p.mode=b.dataset.st;if(p.mode==='highrise')ensureHR(p);st.started=true;save();loadInputs();applyMode();renderAll();startStep2();return;}
  if(b.dataset.st2){$('#start').hidden=true;document.querySelector('nav [data-tab=estimate]').click();
   if(b.dataset.st2==='up'){const i=document.querySelector('#estimate .layHost .layIn');if(i)i.click();}
-  else setTimeout(()=>{const f=$('#quick [data-qs=bN]')||$('#quick [data-qa=plotArea]');const ae=document.activeElement;if(f&&!(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName))){f.scrollIntoView({block:'center'});f.focus();}},60);}
+  else setTimeout(()=>{const f=$('#quick [data-qh=plotArea]')||$('#quick [data-qa=plotArea]');const ae=document.activeElement;if(f&&!(ae&&/INPUT|TEXTAREA|SELECT/.test(ae.tagName))){f.scrollIntoView({block:'center'});f.focus();}},60);}
  if(b.id==='stX'){$('#start').hidden=true;st.started=true;save();}});
 window.__startShow=startShow;
 function isEmpty(p){p=p||P();if(p.mode==='highrise'){const h=p.hr||{};return !['plotArea','plotPrice','basements','podium','commercial','residential','plate','groundArea','shops','parkArea','targetSell'].some(k=>pos(h[k]))&&!(+h.qTotal>0)&&!(h.units||[]).some(u=>pos(u.size)&&pos(u.perFloor));}
@@ -374,7 +438,7 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();defP=e;$('#
 $('#installBtn').onclick=async()=>{if(!defP)return;defP.prompt();await defP.userChoice;defP=null;$('#installHint').hidden=true;};
 $('#ihClose').onclick=()=>{$('#installHint').hidden=true;st.hintClosed=true;save();};
 if(!standalone&&!st.hintClosed&&MQ.matches){if(/iphone|ipad|ipod/i.test(navigator.userAgent))$('#ihText').textContent='To install: tap the Share button, then "Add to Home Screen".';else $('#ihText').textContent='Install: open the browser menu ⋮ and choose "Add to Home screen" / "Install app".';$('#installHint').hidden=false;}
-document.addEventListener('click',e=>{if(e.target.closest('#goSale')){const c=$('#salesCard');c&&c.scrollIntoView({behavior:'smooth',block:'start'});c&&c.classList.add('flash');setTimeout(()=>c&&c.classList.remove('flash'),1500);}});
+document.addEventListener('click',e=>{if(e.target.closest('#goSale')){const c=$('#qSum');c&&c.scrollIntoView({behavior:'smooth',block:'start'});}});
 window.__app={st:()=>st,renderAll,wizOpen,P,S,save,loadInputs,ensureHR,idb,applyMode,fmt,num,esc};
 loadInputs();renderAll();fitBar();if(!st.started){const p=P();if(!isEmpty(p)){const n=newProject();st.projects.unshift(n);st.cur=n.id;loadInputs();renderAll();}startShow();}save();
 document.addEventListener('focusin',e=>{const t=e.target;if(!MQ.matches||!t.matches||!t.matches('input,select,textarea'))return;setTimeout(()=>{const r=t.getBoundingClientRect(),n=document.querySelector('nav').getBoundingClientRect(),b=$('#totBar').getBoundingClientRect(),lim=Math.min(n.top,b.top)-8;if(r.bottom>lim)scrollBy(0,r.bottom-lim+12);else if(r.top<8)scrollBy(0,r.top-60);},60);});window.__ready=true;})();

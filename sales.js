@@ -5,7 +5,7 @@ const has=v=>v!==''&&v!=null&&num(v)>0;
 // auto values from the project (used when the user leaves a field blank)
 function autoRows(p,e,H){const out=[];if(p.mode!=='highrise')return out;(e.unitRows||[]).filter(u=>u.count>0).forEach(u=>out.push({id:u.id,name:u.name,n:u.count,sqft:+u.size||0}));return out;}
 function calc(p,e,H){const S=p.sales||{},rows=autoRows(p,e,H),hr=p.mode==='highrise';const R={flats:[],comm:null,extra:[],revenue:0,sellSqft:0};
- if(!rows.length){const m=S.manual||{};rows.push({id:'_manual',name:'Flats',n:0,sqft:0,manual:true,autoTot:hr?Math.round(e.resSell||0):0});}
+ if(!rows.length){const m=S.manual||{};rows.push({id:'_manual',name:'Flats',n:0,sqft:0,manual:true,autoTot:hr?Math.round((p.hr&&+p.hr.targetSell>0?+p.hr.targetSell:(e.resSell||0))):0});}
  const MU=(S.units||{})._manual||{},mHas=['n','sqft','price'].some(k=>has(MU[k]));
   rows.forEach((r,ri)=>{let u=(S.units||{})[r.id]||{};if(!r.manual&&ri===0&&mHas&&!has(u.price))u=Object.assign({},MU,Object.fromEntries(Object.entries(u).filter(([k,v])=>v!==''&&v!=null)));
   const nT=has(u.n),sT=has(u.sqft),mode=u.mode==='flat'||u.mode==='sqft'?u.mode:(has(u.price)?'flat':'sqft'),hrP=hr&&p.hr&&+p.hr.sellRes>0&&!has(u.price)&&u.mode!=='flat'?+p.hr.sellRes:0,pr=hrP||num(u.price),pool=r.autoTot!=null?r.autoTot:r.n*r.sqft;let n=nT?num(u.n):r.n,sq=sT?num(u.sqft):r.sqft,tot=0,estN=false,totalOnly=false;
